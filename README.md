@@ -160,17 +160,17 @@ flowchart TD
 
 ```mermaid
 flowchart TD
-    CMD["$ market-analysis run\ncli.py :: run()"]
-    RP["pipeline/run_analysis.py\nrun_pipeline()"]
-    LU["run_analysis.py\nload_universe()\n→ 读取 universe.yaml"]
-    RS["run_analysis.py\nrun_symbol()"]
-    FO["db/queries.py\nfetch_ohlcv()\n→ SELECT FROM daily_bars_split_adjusted\n   WHERE source='tiingo'"]
+    CMD["$ market-analysis run\ncli.py :: run()\n解析命令行参数，读取 --universe 路径"]
+    RP["pipeline/run_analysis.py\nrun_pipeline()\n从 settings 加载策略参数，\n遍历 universe 中所有 symbol"]
+    LU["run_analysis.py\nload_universe()\n解析 universe.yaml，\n返回 symbols 列表"]
+    RS["run_analysis.py\nrun_symbol()\n对单个 symbol 依次调用所有策略，\n汇总返回信号列表"]
+    FO["db/queries.py\nfetch_ohlcv()\n从 market_data 读取该 symbol\n全量历史日线数据\n→ SELECT FROM daily_bars_split_adjusted\n   WHERE source='tiingo'"]
     SRC[("market_data DB\ndaily_bars_split_adjusted")]
 
-    SS["strategies/sudden_surge.py\nsudden_surge(symbol, df, params)"]
-    MA["strategies/ma_support.py\nma_support(symbol, df, params)"]
+    SS["strategies/sudden_surge.py\nsudden_surge(symbol, df, params)\n检测近期暴涨：\n5日涨幅超阈值 且 量比达标\n→ 触发则返回 bullish 信号"]
+    MA["strategies/ma_support.py\nma_support(symbol, df, params)\n检测均线支撑/压力：\n价格贴近 20/50/200 日均线\n→ 上方=bullish 下方=bearish"]
 
-    US["db/queries.py\nupsert_signals()\n→ INSERT … ON CONFLICT DO UPDATE"]
+    US["db/queries.py\nupsert_signals()\n将信号写入数据库，\n同一 symbol/日期/策略已有记录则覆盖\n→ INSERT … ON CONFLICT DO UPDATE"]
     DST[("market_analysis DB\nsignals")]
 
     CMD --> RP
@@ -183,7 +183,7 @@ flowchart TD
     RS --> MA
     SS -->|"list[SignalRecord]"| RS
     MA -->|"list[SignalRecord]"| RS
-    RS --> US
+    RS -->|"汇总所有策略信号"| US
     US --> DST
 ```
 
