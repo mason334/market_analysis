@@ -142,28 +142,116 @@ CREATE TABLE signals (
 
 ## 执行流程
 
-### 每日自动流程（建议 cron）
+### 每日调度顺序
 
-```
-05:00  market-data update          # 上游：拉取最新行情数据
-05:30  market-analysis run         # 本项目：运行信号分析
+```mermaid
+flowchart TD
+    CRON1["⏰ 05:00 cron\nmarket-data update"]
+    CRON2["⏰ 05:30 cron\nmarket-analysis run"]
+    PG[("PostgreSQL\nn8n-postgres")]
+
+    CRON1 -->|"写入 daily_bars_split_adjusted"| PG
+    CRON1 --> CRON2
+    CRON2 -->|"读取 OHLCV\n(market_data DB)"| PG
+    CRON2 -->|"写入 signals\n(market_analysis DB)"| PG
 ```
 
-### Pipeline 内部流程
+### CLI → Pipeline 调用链
 
+```mermaid
+flowchart TD
+    CMD["$ market-analysis run\ncli.py :: run()"]
+    RP["pipeline/run_analysis.py\nrun_pipeline()"]
+    LU["run_analysis.py\nload_universe()\n→ 读取 universe.yaml"]
+    RS["run_analysis.py\nrun_symbol()"]
+    FO["db/queries.py\nfetch_ohlcv()\n→ SELECT FROM daily_bars_split_adjusted\n   WHERE source='tiingo'"]
+    SRC[("market_data DB\ndaily_bars_split_adjusted")]
+
+    SS["strategies/sudden_surge.py\nsudden_surge(symbol, df, params)"]
+    MA["strategies/ma_support.py\nma_support(symbol, df, params)"]
+
+    US["db/queries.py\nupsert_signals()\n→ INSERT … ON CONFLICT DO UPDATE"]
+    DST[("market_analysis DB\nsignals")]
+
+    CMD --> RP
+    RP --> LU
+    RP -->|"每个 symbol 循环"| RS
+    RS --> FO
+    FO -->|"返回 DataFrame\nOHLCV ≥ 200根"| RS
+    FO --> SRC
+    RS --> SS
+    RS --> MA
+    SS -->|"list[SignalRecord]"| RS
+    MA -->|"list[SignalRecord]"| RS
+    RS --> US
+    US --> DST
 ```
-run_pipeline(universe.yaml)
-  │
-  ├── 读取股票池 symbols
-  │
-  └── 对每个 symbol：
-        │
-        ├── fetch_ohlcv()          # 从 market_data 读取全量历史（≥200根K线）
-        │
-        ├── sudden_surge()         # 策略1：检测近期暴涨
-        ├── ma_support()           # 策略2：检测均线支撑/压力
-        │
-        └── upsert_signals()       # 写入 market_analysis.signals（冲突则更新）
+
+### 策略内部判断逻辑
+
+#### sudden_surge（近期暴涨）
+
+```mermaid
+flowchart TD
+    IN["输入: symbol, df, params"]
+    CHK1{"len(df) ≥ 31?"}
+    CALC["计算:\n· period_return = close[-1]/close[-6] - 1\n· avg_volume = mean(volume[-31:-1])\n· volume_ratio = volume[-1] / avg_volume"]
+    CHK2{"period_return ≥ min_return\nAND volume_ratio ≥ vol_ratio_min?"}
+    OUT_EMPTY["返回 []"]
+    OUT_SIG["返回 [SignalRecord]\nsignal_type = 'bullish'"]
+
+    IN --> CHK1
+    CHK1 -->|"否"| OUT_EMPTY
+    CHK1 -->|"是"| CALC
+    CALC --> CHK2
+    CHK2 -->|"否"| OUT_EMPTY
+    CHK2 -->|"是"| OUT_SIG
+```
+
+#### ma_support（均线支撑压力）
+
+```mermaid
+flowchart TD
+    IN["输入: symbol, df, params\nperiods=[20,50,200]"]
+    LOOP["对每个 period 遍历"]
+    CHK1{"len(df) ≥ period?"}
+    CALC["计算:\n· ma_value = mean(close[-period:])\n· dist_pct = |close - ma_value| / ma_value"]
+    CHK2{"dist_pct ≤ proximity_pct?"}
+    DIR{"close ≥ ma_value?"}
+    SUP["direction = 'support'\nsignal_type = 'bullish'"]
+    RES["direction = 'resistance'\nsignal_type = 'bearish'"]
+    MULTI{"多条均线同时触发?"}
+    OUT["返回距离最近的一条 SignalRecord"]
+    SKIP["跳过此 period"]
+    EMPTY["返回 []"]
+
+    IN --> LOOP
+    LOOP --> CHK1
+    CHK1 -->|"否"| SKIP
+    CHK1 -->|"是"| CALC
+    CALC --> CHK2
+    CHK2 -->|"否"| SKIP
+    CHK2 -->|"是"| DIR
+    DIR -->|"是"| SUP
+    DIR -->|"否"| RES
+    SUP --> MULTI
+    RES --> MULTI
+    MULTI -->|"是，保留 proximity_pct 最小值"| OUT
+    MULTI -->|"否"| OUT
+    SKIP -->|"所有 period 都跳过"| EMPTY
+```
+
+### Dashboard 查询路径
+
+```mermaid
+flowchart LR
+    BROWSER["浏览器\ndashboard.py"]
+    FN["db/queries.py\nfetch_signals_range(start, end)\nfetch_signals_by_date(date)"]
+    DB[("market_analysis DB\nsignals")]
+
+    BROWSER -->|"用户选择日期范围/策略/方向"| FN
+    FN -->|"SELECT … WHERE date BETWEEN …"| DB
+    DB -->|"返回 DataFrame"| BROWSER
 ```
 
 ---
@@ -299,18 +387,23 @@ pytest tests/
 
 ---
 
-## 依赖层次
+## 模块依赖关系
 
+```mermaid
+flowchart TD
+    CLI["cli.py"]
+    PIPE["pipeline/run_analysis.py"]
+    STRAT["strategies/\nsudden_surge.py\nma_support.py"]
+    DB["db/\n__init__.py · schema.py · queries.py"]
+    DASH["dashboard.py"]
+    PG_MA[("market_analysis DB\nsignals")]
+    PG_MD[("market_data DB\ndaily_bars_split_adjusted")]
+
+    CLI --> PIPE
+    PIPE --> STRAT
+    PIPE --> DB
+    DASH --> DB
+    DB -->|"写"| PG_MA
+    DB -->|"读"| PG_MD
+    STRAT -.->|"禁止 import"| DB
 ```
-cli
- └── pipeline
-      ├── strategies   （纯函数，无内部依赖）
-      └── db
-           ├── market_analysis DB  （写信号）
-           └── market_data DB      （读 OHLCV）
-
-dashboard
- └── db  （直接查询 signals，不经过 pipeline）
-```
-
-**禁止的依赖方向**：strategies 不得 import db；db 不得 import strategies 或 pipeline。
