@@ -193,52 +193,52 @@ flowchart TD
 
 ```mermaid
 flowchart TD
-    IN["输入: symbol, df, params"]
-    CHK1{"len(df) ≥ 31?"}
-    CALC["计算:\n· period_return = close[-1]/close[-6] - 1\n· avg_volume = mean(volume[-31:-1])\n· volume_ratio = volume[-1] / avg_volume"]
-    CHK2{"period_return ≥ min_return\nAND volume_ratio ≥ vol_ratio_min?"}
-    OUT_EMPTY["返回 []"]
-    OUT_SIG["返回 [SignalRecord]\nsignal_type = 'bullish'"]
+    IN["📥 输入\nsymbol: 股票代码\ndf: 全量历史 OHLCV DataFrame\nparams: lookback_days / min_return / volume_ratio_min"]
+    CHK1{"📏 数据量检查\nlen(df) ≥ 31?\n（lookback 5根 + 量比基准 30根 - 1）"}
+    CALC["🔢 指标计算\n· period_return = close[-1] / close[-lookback_days-1] - 1\n  → 观察窗口内总涨幅\n· avg_volume = mean(volume[-31:-1])\n  → 近 30 日日均成交量（不含当日）\n· volume_ratio = volume[-1] / avg_volume\n  → 当日量 / 均量比"]
+    CHK2{"⚖️ 双条件判断\nperiod_return ≥ min_return（默认 8%）\nAND volume_ratio ≥ vol_ratio_min（默认 1.5x）\n两者必须同时满足"}
+    OUT_EMPTY["🚫 返回 []\n数据不足或未达阈值，\n本 symbol 本日无信号"]
+    OUT_SIG["✅ 返回 [SignalRecord]\nsignal_type = 'bullish'\ndetail: return_5d / volume_ratio / trigger_day_return\nsignal_id = SHA1(symbol|date|strategy)[:16]"]
 
     IN --> CHK1
-    CHK1 -->|"否"| OUT_EMPTY
-    CHK1 -->|"是"| CALC
+    CHK1 -->|"否：历史数据太少，无法计算"| OUT_EMPTY
+    CHK1 -->|"是：数据足够"| CALC
     CALC --> CHK2
-    CHK2 -->|"否"| OUT_EMPTY
-    CHK2 -->|"是"| OUT_SIG
+    CHK2 -->|"否：涨幅或量比未达标"| OUT_EMPTY
+    CHK2 -->|"是：两个条件均满足"| OUT_SIG
 ```
 
 #### ma_support（均线支撑压力）
 
 ```mermaid
 flowchart TD
-    IN["输入: symbol, df, params\nperiods=[20,50,200]"]
-    LOOP["对每个 period 遍历"]
-    CHK1{"len(df) ≥ period?"}
-    CALC["计算:\n· ma_value = mean(close[-period:])\n· dist_pct = |close - ma_value| / ma_value"]
-    CHK2{"dist_pct ≤ proximity_pct?"}
-    DIR{"close ≥ ma_value?"}
-    SUP["direction = 'support'\nsignal_type = 'bullish'"]
-    RES["direction = 'resistance'\nsignal_type = 'bearish'"]
-    MULTI{"多条均线同时触发?"}
-    OUT["返回距离最近的一条 SignalRecord"]
-    SKIP["跳过此 period"]
-    EMPTY["返回 []"]
+    IN["📥 输入\nsymbol: 股票代码\ndf: 全量历史 OHLCV DataFrame\nparams: periods / proximity_pct / directions"]
+    LOOP["🔁 遍历每个均线周期\nperiods = [20, 50, 200]\n按顺序逐一检测"]
+    CHK1{"📏 数据量检查\nlen(df) ≥ period?\n（200 日均线需要至少 200 根）"}
+    CALC["🔢 指标计算\n· ma_value = mean(close[-period:])\n  → 该周期简单移动平均值\n· dist_pct = |close[-1] - ma_value| / ma_value\n  → 当日收盘价偏离均线的百分比"]
+    CHK2{"⚖️ 距离判断\ndist_pct ≤ proximity_pct？\n（默认 2%，即价格在均线 ±2% 范围内）"}
+    DIR{"📍 方向判断\nclose[-1] ≥ ma_value？\n（收盘价在均线上方还是下方）"}
+    SUP["🟢 支撑信号\ndirection = 'support'\n价格在均线上方贴近，\n均线对价格形成支撑\nsignal_type = 'bullish'"]
+    RES["🔴 压力信号\ndirection = 'resistance'\n价格在均线下方贴近，\n均线对价格形成压力\nsignal_type = 'bearish'"]
+    MULTI{"🔀 去重判断\n本 symbol 本日是否\n多条均线同时触发？"}
+    OUT["📤 返回 [SignalRecord]\n只保留 dist_pct 最小的那条\n（距离最近的均线信号最强）"]
+    SKIP["⏭️ 跳过此 period\n数据不足或距离超出阈值"]
+    EMPTY["🚫 返回 []\n所有周期均不满足条件，\n本 symbol 本日无信号"]
 
     IN --> LOOP
     LOOP --> CHK1
-    CHK1 -->|"否"| SKIP
-    CHK1 -->|"是"| CALC
+    CHK1 -->|"否：历史太短，跳过"| SKIP
+    CHK1 -->|"是：数据充足"| CALC
     CALC --> CHK2
-    CHK2 -->|"否"| SKIP
-    CHK2 -->|"是"| DIR
-    DIR -->|"是"| SUP
-    DIR -->|"否"| RES
+    CHK2 -->|"否：距离 > 2%，未贴近均线"| SKIP
+    CHK2 -->|"是：距离 ≤ 2%，贴近均线"| DIR
+    DIR -->|"是：收盘在均线上方"| SUP
+    DIR -->|"否：收盘在均线下方"| RES
     SUP --> MULTI
     RES --> MULTI
-    MULTI -->|"是，保留 proximity_pct 最小值"| OUT
-    MULTI -->|"否"| OUT
-    SKIP -->|"所有 period 都跳过"| EMPTY
+    MULTI -->|"是：保留 dist_pct 最小的一条"| OUT
+    MULTI -->|"否：直接返回"| OUT
+    SKIP -->|"所有 period 处理完毕仍无触发"| EMPTY
 ```
 
 ### Dashboard 查询路径
