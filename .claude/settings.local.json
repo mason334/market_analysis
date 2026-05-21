@@ -1,6 +1,5 @@
 {
   "permissions": {
-    "defaultMode": "acceptEdits",
     "allow": [
       "Bash(uv:*)",
       "Bash(where:*)",
@@ -14,12 +13,14 @@
       "Bash(.venv/Scripts/pytest:*)",
       "Bash(.venv/Scripts/ruff:*)",
       "Bash(.venv/Scripts/market-data:*)",
-      "Bash(.venv/Scripts/market-analysis:*)"
+      "Bash(.venv/Scripts/market-analysis:*)",
+      "Bash(.venv/Scripts/python -c \"from market_analysis.db.queries import fetch_signals_range; from datetime import date; print\\(fetch_signals_range\\(date\\(2026,1,1\\), date\\(2026,5,21\\)\\)\\)\")"
     ],
     "deny": [
       "Bash(docker rm:*)",
       "Bash(docker rmi:*)",
       "Bash(docker system prune:*)"
-    ]
+    ],
+    "defaultMode": "acceptEdits"
   }
 }
