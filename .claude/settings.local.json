@@ -1,0 +1,25 @@
+{
+  "permissions": {
+    "defaultMode": "acceptEdits",
+    "allow": [
+      "Bash(uv:*)",
+      "Bash(where:*)",
+      "Bash(cmd:*)",
+      "Bash(powershell:*)",
+      "Bash(python:*)",
+      "Bash(docker:*)",
+      "Bash(.venv/Scripts/python:*)",
+      "Bash(.venv/Scripts/python.exe:*)",
+      "Bash(.venv/Scripts/pip:*)",
+      "Bash(.venv/Scripts/pytest:*)",
+      "Bash(.venv/Scripts/ruff:*)",
+      "Bash(.venv/Scripts/market-data:*)",
+      "Bash(.venv/Scripts/market-analysis:*)"
+    ],
+    "deny": [
+      "Bash(docker rm:*)",
+      "Bash(docker rmi:*)",
+      "Bash(docker system prune:*)"
+    ]
+  }
+}

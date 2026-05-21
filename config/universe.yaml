@@ -1,0 +1,12 @@
+# 股票池 - 与 market_data 项目保持一致
+symbols:
+  - AAPL
+  - MSFT
+  - GOOGL
+  - AMZN
+  - META
+  - NVDA
+  - TSLA
+  - JPM
+  - V
+  - JNJ
