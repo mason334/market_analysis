@@ -8,7 +8,8 @@ import structlog
 import yaml
 
 from market_analysis.config import settings
-from market_analysis.db.queries import fetch_ohlcv, upsert_signals
+from market_analysis.db.queries import fetch_ohlcv, upsert_signals, upsert_snapshots
+from market_analysis.models import IndicatorSnapshot
 from market_analysis.strategies import STRATEGIES
 
 log = structlog.get_logger(__name__)
@@ -28,24 +29,27 @@ def run_symbol(
     strategy_params: dict[str, Any],
     source: str = "tiingo",
     min_bars: int = 200,
-) -> list[dict[str, Any]]:
+) -> tuple[list[IndicatorSnapshot], list[dict[str, Any]]]:
     df = fetch_ohlcv(symbol, source=source)
     if len(df) < min_bars:
         log.warning(
             "pipeline.skip.insufficient_bars", symbol=symbol, bars=len(df), required=min_bars
         )
-        return []
+        return [], []
 
+    all_snapshots: list[IndicatorSnapshot] = []
     all_signals: list[dict[str, Any]] = []
+
     for name, fn in STRATEGIES.items():
         params = strategy_params.get(name, {})
         try:
-            signals = fn(symbol=symbol, df=df, params=params)
+            snapshots, signals = fn(symbol=symbol, df=df, params=params)
+            all_snapshots.extend(snapshots)
             all_signals.extend(signals)
         except Exception:
             log.exception("pipeline.strategy.error", symbol=symbol, strategy=name)
 
-    return all_signals
+    return all_snapshots, all_signals
 
 
 def run_pipeline(
@@ -62,11 +66,17 @@ def run_pipeline(
 
     total_signals = 0
     for symbol in symbols:
-        signals = run_symbol(symbol, strategy_params, source=source, min_bars=min_bars)
+        snapshots, signals = run_symbol(symbol, strategy_params, source=source, min_bars=min_bars)
+        upsert_snapshots(snapshots)
         if signals:
             upsert_signals(signals)
             total_signals += len(signals)
-        log.info("pipeline.symbol.done", symbol=symbol, signals=len(signals))
+        log.info(
+            "pipeline.symbol.done",
+            symbol=symbol,
+            snapshots=len(snapshots),
+            signals=len(signals),
+        )
 
     log.info("pipeline.done", total_signals=total_signals)
     return total_signals

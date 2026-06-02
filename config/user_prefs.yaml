@@ -1,0 +1,10 @@
+sr:
+  cluster_pct: 2.0
+  extreme_order: 30
+  extreme_pct: 5.0
+  lookback_window: 250
+  max_dist_pct: 25.0
+  max_levels: 10
+  min_span_days: 10
+  min_touches: 2
+  swing_order: 13

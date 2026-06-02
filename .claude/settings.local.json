@@ -14,7 +14,11 @@
       "Bash(.venv/Scripts/ruff:*)",
       "Bash(.venv/Scripts/market-data:*)",
       "Bash(.venv/Scripts/market-analysis:*)",
-      "Bash(.venv/Scripts/python -c \"from market_analysis.db.queries import fetch_signals_range; from datetime import date; print\\(fetch_signals_range\\(date\\(2026,1,1\\), date\\(2026,5,21\\)\\)\\)\")"
+      "Bash(.venv/Scripts/python -c \"from market_analysis.db.queries import fetch_signals_range; from datetime import date; print\\(fetch_signals_range\\(date\\(2026,1,1\\), date\\(2026,5,21\\)\\)\\)\")",
+      "Bash(pip install -e \".[dev]\" -q)",
+      "Bash(pip install -e . -q)",
+      "Bash(pip install plotly statsmodels numpy -q -i https://pypi.tuna.tsinghua.edu.cn/simple)",
+      "Bash(streamlit run test_spike.py --server.port 8505 --server.headless true)"
     ],
     "deny": [
       "Bash(docker rm:*)",

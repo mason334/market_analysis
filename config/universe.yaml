@@ -1,12 +1,22 @@
 # 股票池 - 与 market_data 项目保持一致
 symbols:
+  # Broad market ETFs
+  - SPY
+  - QQQ
+  - IWM
+  - DIA
+  - SMH
+  # Large cap tech
   - AAPL
   - MSFT
-  - GOOGL
+  - NVDA
   - AMZN
   - META
-  - NVDA
+  - GOOGL
   - TSLA
+  # Other sectors
   - JPM
-  - V
-  - JNJ
+  - XOM
+  - MU
+  - INTC
+  - ARM

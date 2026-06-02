@@ -4,10 +4,47 @@ strategies:
     min_return: 0.08          # 窗口内涨幅阈值（8%）
     volume_ratio_min: 1.5     # 成交量放大倍数（相对近30日均量）
 
+  sudden_move:
+    window: 10                # 滑动窗口（交易日），dashboard 可覆盖
+    threshold: 0.10           # 从窗口最低收盘价拉升 ≥ 10% 触发 bullish 信号
+
+  sharpe:
+    window: 5                 # 滑动窗口（交易日），dashboard 可覆盖
+    risk_free_rate: 0.0       # 年化无风险利率（如 0.04 表示 4%）
+    bullish_threshold: 1.0    # 年化夏普 ≥ 此值触发 bullish
+    bearish_threshold: -1.0   # 年化夏普 ≤ 此值触发 bearish
+
   ma_support:
     periods: [20, 50, 200]    # 关注的均线周期
     proximity_pct: 0.02       # 价格距均线 ≤ 2% 触发
     directions: [support, resistance]  # 两个方向都检测
+
+  variance_ratio:
+    lags: [5, 10, 20]         # 检验的滞后期
+    bullish_threshold: 1.1    # VR 超过此值触发 bullish（动量）
+    bearish_threshold: 0.9    # VR 低于此值触发 bearish（均值回归）
+    min_agree: 2              # 至少多少个 lag 同向才触发信号
+
+  hurst:
+    window: 60                # 滚动窗口（交易日）
+    bullish_threshold: 0.65   # Hurst > 此值视为趋势形成
+    bearish_threshold: 0.35   # Hurst < 此值视为强均值回归
+
+  markov:
+    fit_window: 252           # 用于拟合的历史天数
+    regime_threshold: 0.75    # 体制概率超过此值视为切换
+    order: 1                  # AR 阶数
+
+  support_resistance:
+    swing_order: 3          # 摆动点检测：左右各 N 根K线为极值
+    cluster_pct: 1.5        # 聚类阈值：价格差 ≤ 1.5% 视为同一水平区
+    min_touches: 2          # 最少触及次数
+    min_span_days: 10       # 触及时间跨度至少 10 天（过滤密集震荡）
+    max_levels: 5           # 最多输出几条关键位
+    max_dist_pct: 15        # 距当前价格超过此百分比的关键位不显示
+    extreme_order: 60       # 极端单点：左右各 N 根K线内是最高/最低
+    extreme_pct: 5.0        # 极端单点：偏离周围均价 >= N% 才算极端
+    lookback_window: 500    # 用于检测的历史K线根数（500根≈2年交易日）
 
 pipeline:
   min_bars: 200               # 至少需要的历史交易日数
