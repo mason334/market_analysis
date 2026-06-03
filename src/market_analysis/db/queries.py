@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import json
 from datetime import date
 from typing import Any
 
@@ -9,9 +8,18 @@ import structlog
 from psycopg import sql
 
 from market_analysis.db import get_conn, get_source_conn
-from market_analysis.models import IndicatorSnapshot
 
 log = structlog.get_logger(__name__)
+
+_INDICATORS_DAILY_COLS = [
+    "symbol", "date",
+    "nearest_support", "nearest_resistance",
+    "dist_support_pct", "dist_support_atr",
+    "dist_resistance_pct", "dist_resistance_atr",
+    "atr_14", "sr_status",
+    "breakout_5d", "breakout_level",
+    "trend_slope_5d", "trend_r2_5d",
+]
 
 _FETCH_OHLCV = """
 SELECT date, open, high, low, close, volume
@@ -20,59 +28,74 @@ WHERE symbol = %s AND source = %s
 ORDER BY date
 """
 
-_UPSERT_SIGNAL = """
-INSERT INTO signals (signal_id, symbol, date, strategy, signal_type, detail_json, created_at)
-VALUES (%s, %s, %s, %s, %s, %s, now())
-ON CONFLICT (symbol, date, strategy) DO UPDATE
-    SET signal_type  = EXCLUDED.signal_type,
-        detail_json  = EXCLUDED.detail_json,
-        created_at   = now()
+_UPSERT_SR_DAILY = """
+INSERT INTO indicators_daily (
+    symbol, date,
+    nearest_support, nearest_resistance,
+    dist_support_pct, dist_support_atr,
+    dist_resistance_pct, dist_resistance_atr,
+    atr_14, sr_status,
+    breakout_5d, breakout_level,
+    trend_slope_5d, trend_r2_5d
+)
+VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+ON CONFLICT (symbol, date) DO UPDATE SET
+    nearest_support     = EXCLUDED.nearest_support,
+    nearest_resistance  = EXCLUDED.nearest_resistance,
+    dist_support_pct    = EXCLUDED.dist_support_pct,
+    dist_support_atr    = EXCLUDED.dist_support_atr,
+    dist_resistance_pct = EXCLUDED.dist_resistance_pct,
+    dist_resistance_atr = EXCLUDED.dist_resistance_atr,
+    atr_14              = EXCLUDED.atr_14,
+    sr_status           = EXCLUDED.sr_status,
+    breakout_5d         = EXCLUDED.breakout_5d,
+    breakout_level      = EXCLUDED.breakout_level,
+    trend_slope_5d      = EXCLUDED.trend_slope_5d,
+    trend_r2_5d         = EXCLUDED.trend_r2_5d
 """
 
-_FETCH_SIGNALS = """
-SELECT signal_id, symbol, date, strategy, signal_type, detail_json, created_at
-FROM signals
+_FETCH_LATEST_SR_DATE = """
+SELECT MAX(date) FROM indicators_daily
+"""
+
+_FETCH_SR_DAILY_BY_DATE = """
+SELECT symbol, date,
+       nearest_support, nearest_resistance,
+       dist_support_pct, dist_support_atr,
+       dist_resistance_pct, dist_resistance_atr,
+       atr_14, sr_status,
+       breakout_5d, breakout_level,
+       trend_slope_5d, trend_r2_5d
+FROM indicators_daily
 WHERE date = %s
-ORDER BY symbol, strategy
+ORDER BY symbol
 """
 
-_FETCH_SIGNALS_RANGE = """
-SELECT signal_id, symbol, date, strategy, signal_type, detail_json, created_at
-FROM signals
-WHERE date BETWEEN %s AND %s
-ORDER BY date DESC, symbol, strategy
-"""
-
-_FETCH_SIGNALS_SYMBOL_RANGE = """
-SELECT signal_id, symbol, date, strategy, signal_type, detail_json, created_at
-FROM signals
+_FETCH_SR_DAILY_FOR_SYMBOL = """
+SELECT symbol, date,
+       nearest_support, nearest_resistance,
+       dist_support_pct, dist_support_atr,
+       dist_resistance_pct, dist_resistance_atr,
+       atr_14, sr_status,
+       breakout_5d, breakout_level,
+       trend_slope_5d, trend_r2_5d
+FROM indicators_daily
 WHERE symbol = %s AND date BETWEEN %s AND %s
-ORDER BY date DESC, strategy
+ORDER BY date DESC
 """
 
-_UPSERT_SNAPSHOT = """
-INSERT INTO indicator_snapshots (symbol, date, indicator, value)
-VALUES (%s, %s, %s, %s)
-ON CONFLICT (symbol, date, indicator) DO UPDATE
-    SET value = EXCLUDED.value
-"""
-
-_FETCH_LATEST_SNAPSHOT_DATE = """
-SELECT MAX(date) FROM indicator_snapshots
-"""
-
-_FETCH_SNAPSHOTS_DATE = """
-SELECT symbol, indicator, value
-FROM indicator_snapshots
-WHERE date = %s
-ORDER BY symbol, indicator
-"""
-
-_FETCH_SNAPSHOTS_SYMBOL_RANGE = """
-SELECT date, indicator, value
-FROM indicator_snapshots
-WHERE symbol = %s AND date BETWEEN %s AND %s
-ORDER BY date, indicator
+_FETCH_SR_DAILY_LATEST_SYMBOL = """
+SELECT symbol, date,
+       nearest_support, nearest_resistance,
+       dist_support_pct, dist_support_atr,
+       dist_resistance_pct, dist_resistance_atr,
+       atr_14, sr_status,
+       breakout_5d, breakout_level,
+       trend_slope_5d, trend_r2_5d
+FROM indicators_daily
+WHERE symbol = %s
+ORDER BY date DESC
+LIMIT 1
 """
 
 
@@ -83,101 +106,67 @@ def fetch_ohlcv(symbol: str, source: str = "tiingo") -> pd.DataFrame:
         return pd.DataFrame(columns=["date", "open", "high", "low", "close", "volume"])
     df = pd.DataFrame(rows, columns=["date", "open", "high", "low", "close", "volume"])
     df["date"] = pd.to_datetime(df["date"])
-    df = df.set_index("date").sort_index()
-    return df
+    return df.set_index("date").sort_index()
 
 
-def upsert_signals(records: list[dict[str, Any]]) -> int:
-    if not records:
-        return 0
+def upsert_indicators_daily(row: dict[str, Any]) -> None:
     with get_conn() as conn:
-        for r in records:
-            conn.execute(
-                _UPSERT_SIGNAL,
-                (
-                    r["signal_id"],
-                    r["symbol"],
-                    r["date"],
-                    r["strategy"],
-                    r["signal_type"],
-                    json.dumps(r.get("detail_json")),
-                ),
-            )
+        conn.execute(
+            _UPSERT_SR_DAILY,
+            (
+                row["symbol"],
+                row["date"],
+                row.get("nearest_support"),
+                row.get("nearest_resistance"),
+                row.get("dist_support_pct"),
+                row.get("dist_support_atr"),
+                row.get("dist_resistance_pct"),
+                row.get("dist_resistance_atr"),
+                row.get("atr_14"),
+                row.get("sr_status"),
+                row.get("breakout_5d"),
+                row.get("breakout_level"),
+                row.get("trend_slope_5d"),
+                row.get("trend_r2_5d"),
+            ),
+        )
         conn.commit()
-    log.info("db.signals.upserted", count=len(records))
-    return len(records)
 
 
-def upsert_snapshots(records: list[IndicatorSnapshot]) -> int:
-    if not records:
-        return 0
+def fetch_latest_indicators_daily_date() -> date | None:
     with get_conn() as conn:
-        for r in records:
-            conn.execute(_UPSERT_SNAPSHOT, (r.symbol, r.date, r.indicator, r.value))
-        conn.commit()
-    log.info("db.snapshots.upserted", count=len(records))
-    return len(records)
-
-
-def fetch_signals_by_date(target_date: date) -> pd.DataFrame:
-    with get_conn() as conn:
-        rows = conn.execute(_FETCH_SIGNALS, (target_date,)).fetchall()
-    _COLS = ["signal_id", "symbol", "date", "strategy", "signal_type", "detail_json", "created_at"]
-    if not rows:
-        return pd.DataFrame(columns=_COLS)
-    return pd.DataFrame(rows, columns=_COLS)
-
-
-def fetch_signals_range(start: date, end: date) -> pd.DataFrame:
-    with get_conn() as conn:
-        rows = conn.execute(_FETCH_SIGNALS_RANGE, (start, end)).fetchall()
-    _COLS = ["signal_id", "symbol", "date", "strategy", "signal_type", "detail_json", "created_at"]
-    if not rows:
-        return pd.DataFrame(columns=_COLS)
-    return pd.DataFrame(rows, columns=_COLS)
-
-
-def fetch_signals_for_symbol(symbol: str, start: date, end: date) -> pd.DataFrame:
-    with get_conn() as conn:
-        rows = conn.execute(_FETCH_SIGNALS_SYMBOL_RANGE, (symbol, start, end)).fetchall()
-    _COLS = ["signal_id", "symbol", "date", "strategy", "signal_type", "detail_json", "created_at"]
-    if not rows:
-        return pd.DataFrame(columns=_COLS)
-    return pd.DataFrame(rows, columns=_COLS)
-
-
-def fetch_latest_snapshot_date() -> date | None:
-    """Return the most recent date that has snapshot data, or None if table is empty."""
-    with get_conn() as conn:
-        row = conn.execute(_FETCH_LATEST_SNAPSHOT_DATE).fetchone()
+        row = conn.execute(_FETCH_LATEST_SR_DATE).fetchone()
     return row[0] if row and row[0] is not None else None
 
 
-def fetch_snapshots_by_date(target_date: date) -> pd.DataFrame:
-    """Return wide-format DataFrame: index=symbol, columns=indicator names."""
+def fetch_indicators_daily_by_date(target_date: date) -> pd.DataFrame:
     with get_conn() as conn:
-        rows = conn.execute(_FETCH_SNAPSHOTS_DATE, (target_date,)).fetchall()
+        rows = conn.execute(_FETCH_SR_DAILY_BY_DATE, (target_date,)).fetchall()
     if not rows:
-        return pd.DataFrame()
-    df = pd.DataFrame(rows, columns=["symbol", "indicator", "value"])
-    pivot = df.pivot(index="symbol", columns="indicator", values="value").reset_index()
-    pivot.columns.name = None
-    return pivot
+        return pd.DataFrame(columns=_INDICATORS_DAILY_COLS)
+    return pd.DataFrame(rows, columns=_INDICATORS_DAILY_COLS)
 
 
-def fetch_snapshots_for_symbol(symbol: str, start: date, end: date) -> pd.DataFrame:
-    """Return long-format DataFrame with columns [date, indicator, value] for one symbol."""
+def fetch_indicators_daily_for_symbol(symbol: str, start: date, end: date) -> pd.DataFrame:
     with get_conn() as conn:
-        rows = conn.execute(_FETCH_SNAPSHOTS_SYMBOL_RANGE, (symbol, start, end)).fetchall()
+        rows = conn.execute(_FETCH_SR_DAILY_FOR_SYMBOL, (symbol, start, end)).fetchall()
     if not rows:
-        return pd.DataFrame(columns=["date", "indicator", "value"])
-    df = pd.DataFrame(rows, columns=["date", "indicator", "value"])
+        return pd.DataFrame(columns=_INDICATORS_DAILY_COLS)
+    df = pd.DataFrame(rows, columns=_INDICATORS_DAILY_COLS)
     df["date"] = pd.to_datetime(df["date"])
     return df
 
 
+def fetch_latest_indicators_daily_for_symbol(symbol: str) -> dict[str, Any] | None:
+    with get_conn() as conn:
+        row = conn.execute(_FETCH_SR_DAILY_LATEST_SYMBOL, (symbol,)).fetchone()
+    if not row:
+        return None
+    return dict(zip(_INDICATORS_DAILY_COLS, row))
+
+
 # ---------------------------------------------------------------------------
-# Generic DB viewer helpers — auto-discover tables, no hardcoding
+# Generic DB viewer helpers
 # ---------------------------------------------------------------------------
 
 _LIST_TABLES = """
@@ -200,21 +189,18 @@ def _ctx(use_source: bool):
 
 
 def fetch_db_table_names(use_source: bool = False) -> list[str]:
-    """Return all public BASE TABLE names from the selected database."""
     with _ctx(use_source) as conn:
         rows = conn.execute(_LIST_TABLES).fetchall()
     return [r[0] for r in rows]
 
 
 def fetch_db_table_columns(table_name: str, use_source: bool = False) -> pd.DataFrame:
-    """Return column names and data types for a table."""
     with _ctx(use_source) as conn:
         rows = conn.execute(_TABLE_COLUMNS, (table_name,)).fetchall()
     return pd.DataFrame(rows, columns=["列名", "类型"])
 
 
 def fetch_db_table_row_count(table_name: str, use_source: bool = False) -> int:
-    """Return approximate row count for a table (uses COUNT(*))."""
     q = sql.SQL("SELECT COUNT(*) FROM {}").format(sql.Identifier(table_name))
     with _ctx(use_source) as conn:
         row = conn.execute(q).fetchone()
@@ -227,7 +213,6 @@ def fetch_db_table_data(
     offset: int = 0,
     use_source: bool = False,
 ) -> pd.DataFrame:
-    """Return paginated rows from any table. Column names auto-detected."""
     col_df = fetch_db_table_columns(table_name, use_source=use_source)
     if col_df.empty:
         return pd.DataFrame()

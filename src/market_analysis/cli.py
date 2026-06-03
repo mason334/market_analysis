@@ -40,11 +40,11 @@ def run(
         readable=True,
     ),
 ) -> None:
-    """对 universe 中所有股票跑今日信号分析。"""
+    """对 universe 中所有股票跑今日分析，结果写入 indicators_daily。"""
     from market_analysis.pipeline.run_analysis import run_pipeline
 
     total = run_pipeline(universe_path=universe)
-    typer.echo(f"Done. Total signals written: {total}")
+    typer.echo(f"Done. {total} symbols written to indicators_daily.")
 
 
 @app.command("show")
@@ -53,27 +53,23 @@ def show(
         str(date.today()),
         "--date",
         "-d",
-        help="查看信号的日期（YYYY-MM-DD）",
+        help="查看快照的日期（YYYY-MM-DD）",
     ),
-    strategy: str | None = typer.Option(None, "--strategy", "-s", help="过滤策略名称"),
 ) -> None:
-    """查看指定日期的信号。"""
+    """查看指定日期的 indicators_daily 快照。"""
     import pandas as pd
 
-    from market_analysis.db.queries import fetch_signals_by_date
+    from market_analysis.db.queries import fetch_indicators_daily_by_date
 
     d = date.fromisoformat(target_date)
-    df: pd.DataFrame = fetch_signals_by_date(d)
+    df: pd.DataFrame = fetch_indicators_daily_by_date(d)
 
     if df.empty:
-        typer.echo(f"No signals found for {d}.")
+        typer.echo(f"No snapshot data found for {d}.")
         return
 
-    if strategy:
-        df = df[df["strategy"] == strategy]
-
     pd.set_option("display.max_columns", None)
-    pd.set_option("display.width", 120)
+    pd.set_option("display.width", 160)
     typer.echo(df.to_string(index=False))
 
 

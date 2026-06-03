@@ -6,50 +6,38 @@ from market_analysis.db import get_conn
 
 log = structlog.get_logger(__name__)
 
-_CREATE_SIGNALS = """
-CREATE TABLE IF NOT EXISTS signals (
-    signal_id    TEXT        PRIMARY KEY,
-    symbol       TEXT        NOT NULL,
-    date         DATE        NOT NULL,
-    strategy     TEXT        NOT NULL,
-    signal_type  TEXT        NOT NULL,
-    detail_json  JSONB,
-    created_at   TIMESTAMPTZ NOT NULL DEFAULT now(),
-    UNIQUE (symbol, date, strategy)
+# Primary daily analysis table (wide format, one row per symbol per day)
+_CREATE_INDICATORS_DAILY = """
+CREATE TABLE IF NOT EXISTS indicators_daily (
+    symbol                TEXT    NOT NULL,
+    date                  DATE    NOT NULL,
+    nearest_support       FLOAT,
+    nearest_resistance    FLOAT,
+    dist_support_pct      FLOAT,
+    dist_support_atr      FLOAT,
+    dist_resistance_pct   FLOAT,
+    dist_resistance_atr   FLOAT,
+    atr_14                FLOAT,
+    sr_status             TEXT,
+    breakout_5d           TEXT,
+    breakout_level        FLOAT,
+    trend_slope_5d        FLOAT,
+    trend_r2_5d           FLOAT,
+    PRIMARY KEY (symbol, date)
 );
 """
 
-_CREATE_SIGNALS_IDX = """
-CREATE INDEX IF NOT EXISTS signals_date_idx ON signals (date DESC);
-CREATE INDEX IF NOT EXISTS signals_symbol_idx ON signals (symbol);
-CREATE INDEX IF NOT EXISTS signals_strategy_idx ON signals (strategy);
-"""
-
-_CREATE_SNAPSHOTS = """
-CREATE TABLE IF NOT EXISTS indicator_snapshots (
-    symbol    TEXT  NOT NULL,
-    date      DATE  NOT NULL,
-    indicator TEXT  NOT NULL,
-    value     FLOAT NOT NULL,
-    PRIMARY KEY (symbol, date, indicator)
-);
-"""
-
-_CREATE_SNAPSHOTS_IDX = """
-CREATE INDEX IF NOT EXISTS snapshots_date_idx   ON indicator_snapshots (date DESC);
-CREATE INDEX IF NOT EXISTS snapshots_symbol_idx ON indicator_snapshots (symbol);
+_CREATE_INDICATORS_DAILY_IDX = """
+CREATE INDEX IF NOT EXISTS indicators_daily_date_idx   ON indicators_daily (date DESC);
+CREATE INDEX IF NOT EXISTS indicators_daily_symbol_idx ON indicators_daily (symbol);
+CREATE INDEX IF NOT EXISTS indicators_daily_status_idx ON indicators_daily (sr_status);
 """
 
 
 def init_schema() -> None:
     with get_conn() as conn:
-        conn.execute(_CREATE_SIGNALS)
-        for stmt in _CREATE_SIGNALS_IDX.strip().splitlines():
-            stmt = stmt.strip()
-            if stmt:
-                conn.execute(stmt)
-        conn.execute(_CREATE_SNAPSHOTS)
-        for stmt in _CREATE_SNAPSHOTS_IDX.strip().splitlines():
+        conn.execute(_CREATE_INDICATORS_DAILY)
+        for stmt in _CREATE_INDICATORS_DAILY_IDX.strip().splitlines():
             stmt = stmt.strip()
             if stmt:
                 conn.execute(stmt)
