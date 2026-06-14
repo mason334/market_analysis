@@ -11,8 +11,6 @@ from scipy.signal import argrelextrema
 
 log = structlog.get_logger(__name__)
 
-_MIN_ROWS = 60
-
 
 def _compute_atr(df: pd.DataFrame, period: int) -> float:
     """Wilder ATR (RMA): alpha = 1/period, adjust=False."""
@@ -46,9 +44,6 @@ def support_resistance(
 
     Returns None if insufficient data.
     """
-    if len(df) < _MIN_ROWS:
-        log.debug("support_resistance.skip.insufficient_data", symbol=symbol, rows=len(df))
-        return None
 
     atr_period: int = params.get("atr_period", 14)
     watch_mult: float = params.get("watch_atr_mult", 1.5)
@@ -112,8 +107,12 @@ def support_resistance(
     # --- Breakout detection (last breakout_window candles, most recent first) ---
     breakout_5d, breakout_level = _detect_breakout(df, levels, breakout_window)
 
-    # --- Linear regression trend (last trend_window candles) ---
+    # --- Linear regression trend (5d / 10d / 20d / 40d / 60d) ---
     trend_slope_5d, trend_r2_5d = _compute_trend(df, trend_window)
+    trend_slope_10d, trend_r2_10d = _compute_trend(df, 10)
+    trend_slope_20d, trend_r2_20d = _compute_trend(df, 20)
+    trend_slope_40d, trend_r2_40d = _compute_trend(df, 40)
+    trend_slope_60d, trend_r2_60d = _compute_trend(df, 60)
 
     log.debug(
         "support_resistance.done",
@@ -138,6 +137,14 @@ def support_resistance(
         "breakout_level": breakout_level,
         "trend_slope_5d": trend_slope_5d,
         "trend_r2_5d": trend_r2_5d,
+        "trend_slope_10d": trend_slope_10d,
+        "trend_r2_10d": trend_r2_10d,
+        "trend_slope_20d": trend_slope_20d,
+        "trend_r2_20d": trend_r2_20d,
+        "trend_slope_40d": trend_slope_40d,
+        "trend_r2_40d": trend_r2_40d,
+        "trend_slope_60d": trend_slope_60d,
+        "trend_r2_60d": trend_r2_60d,
     }
 
 
@@ -293,8 +300,6 @@ def compute_sr_levels(df: pd.DataFrame, params: dict[str, Any]) -> list[dict[str
     lookback: int = params.get("lookback_window", 500)
 
     df = df.iloc[-lookback:] if len(df) > lookback else df
-    if len(df) < _MIN_ROWS:
-        return []
 
     high_idx = argrelextrema(df["high"].values, np.greater_equal, order=swing_order)[0]
     low_idx = argrelextrema(df["low"].values, np.less_equal, order=swing_order)[0]
@@ -441,8 +446,6 @@ def compute_raw_swings(
     Returns (dates, prices) as two equal-length lists.
     """
     df = df.iloc[-lookback_window:] if len(df) > lookback_window else df
-    if len(df) < _MIN_ROWS:
-        return [], []
 
     high_idx = argrelextrema(df["high"].values, np.greater_equal, order=swing_order)[0]
     low_idx = argrelextrema(df["low"].values, np.less_equal, order=swing_order)[0]

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import subprocess
 from datetime import date, timedelta
 from pathlib import Path
 from typing import Any
@@ -7,6 +8,7 @@ from typing import Any
 import pandas as pd
 import plotly.graph_objects as go
 import streamlit as st
+import streamlit.components.v1 as components
 import yaml
 
 from market_analysis.config import settings
@@ -16,17 +18,33 @@ from market_analysis.db.queries import (
     fetch_db_table_names,
     fetch_db_table_row_count,
     fetch_indicators_daily_by_date,
+    fetch_indicators_daily_filtered,
     fetch_indicators_daily_for_symbol,
+    fetch_indicators_daily_symbols,
     fetch_latest_indicators_daily_date,
     fetch_latest_indicators_daily_for_symbol,
+    fetch_constituent_turnover_batch,
+    fetch_constituents_for_ticker,
+    fetch_universe_ticker_list,
+    fetch_universe_subcategory_map,
+    fetch_latest_sector_heat_date,
+    fetch_latest_sector_heat_for_ticker,
     fetch_ohlcv,
+    fetch_sector_heat_snapshot,
 )
+from market_analysis.analytics.sector_heat import compute_sector_heat_history
 from market_analysis.strategies.support_resistance import (
     compute_raw_swings,
     compute_sr_levels,
 )
 
 st.set_page_config(page_title="Market Analysis", layout="wide", page_icon="📈")
+
+# ---------------------------------------------------------------------------
+# URL query param — detail page opened in new tab
+# ---------------------------------------------------------------------------
+_symbol_from_url: str | None = st.query_params.get("symbol")
+_sector_from_url: str | None = st.query_params.get("sector")
 
 # ---------------------------------------------------------------------------
 # User preferences persistence
@@ -55,6 +73,7 @@ def _save_user_prefs(section: str, values: dict[str, Any]) -> None:
 if "page" not in st.session_state:
     st.session_state.page = "overview"
     st.session_state.selected_symbol = None
+    st.session_state.selected_sector = None
 
 # ---------------------------------------------------------------------------
 # Constants
@@ -134,6 +153,21 @@ def _fetch_ohlcv_cached(symbol: str) -> pd.DataFrame:
     return fetch_ohlcv(symbol)
 
 
+@st.cache_data(ttl=3600, show_spinner=False)
+def _fetch_etf_set() -> frozenset[str]:
+    return frozenset(fetch_universe_ticker_list())
+
+
+@st.cache_data(ttl=3600, show_spinner=False)
+def _fetch_stock_set() -> frozenset[str]:
+    return frozenset(fetch_constituents_for_ticker("OPTIONS_ACTIVE"))
+
+
+@st.cache_data(ttl=3600, show_spinner=False)
+def _fetch_etf_subcategory_map() -> dict[str, str]:
+    return fetch_universe_subcategory_map()
+
+
 _UNIVERSE_FILE = Path(__file__).parent / "config" / "universe.yaml"
 _USER_PREFS_FILE = Path(__file__).parent / "config" / "user_prefs.yaml"
 
@@ -155,6 +189,10 @@ _INDICATORS_DAILY_COLS = [
     "atr_14", "sr_status",
     "breakout_5d", "breakout_level",
     "trend_slope_5d", "trend_r2_5d",
+    "trend_slope_10d", "trend_r2_10d",
+    "trend_slope_20d", "trend_r2_20d",
+    "trend_slope_40d", "trend_r2_40d",
+    "trend_slope_60d", "trend_r2_60d",
 ]
 
 
@@ -164,7 +202,7 @@ _INDICATORS_DAILY_COLS = [
 # Overview page
 # ---------------------------------------------------------------------------
 def show_overview() -> None:
-    st.title("📈 Market Analysis — 日常快照")
+    st.title("📈 Market Analysis — 策略快照")
 
     latest_db_date = fetch_latest_indicators_daily_date()
     default_date = latest_db_date if latest_db_date is not None else date.today()
@@ -175,7 +213,21 @@ def show_overview() -> None:
         if latest_db_date is not None and latest_db_date < date.today():
             st.caption(f"最新数据：{latest_db_date}（今日数据待更新）")
         st.divider()
-        if st.button("🔄 刷新数据"):
+        if st.button("▶ 运行策略分析", use_container_width=True):
+            with st.spinner("正在运行 market-analysis run-strategies ..."):
+                result = subprocess.run(
+                    ["market-analysis", "run-strategies"],
+                    capture_output=True, text=True,
+                    cwd=str(Path(__file__).parent),
+                )
+            if result.returncode == 0:
+                st.success("分析完成，正在刷新数据...")
+                st.cache_data.clear()
+                st.rerun()
+            else:
+                st.error(f"运行失败：\n```\n{result.stderr[-500:] if result.stderr else result.stdout[-500:]}\n```")
+
+        if st.button("🔄 刷新数据", use_container_width=True):
             st.cache_data.clear()
             st.rerun()
 
@@ -185,7 +237,7 @@ def show_overview() -> None:
         st.warning(
             f"**{selected_date}** 暂无数据。\n\n"
             "请运行以下命令生成分析并写入数据库：\n"
-            "```\nmarket-analysis run\n```"
+            "```\nmarket-analysis run-sr\n```"
         )
         return
 
@@ -200,6 +252,20 @@ def show_overview() -> None:
     c3.metric("警告", n_warning)
     c4.metric("近5日突破", n_breakout)
 
+    # Missing symbols for selected_date
+    _present = set(df["symbol"].tolist())
+    _etf_s = _fetch_etf_set()
+    _stk_s = _fetch_stock_set()
+    _missing_etf = sorted(_etf_s - _present)
+    _missing_stk = sorted(_stk_s - _present)
+    if _missing_etf or _missing_stk:
+        _parts = []
+        if _missing_etf:
+            _parts.append(f"ETF 缺失 {len(_missing_etf)} 个：{', '.join(_missing_etf)}")
+        if _missing_stk:
+            _parts.append(f"个股缺失 {len(_missing_stk)} 个：{', '.join(_missing_stk)}")
+        st.caption("当前日期数据不完整：" + "；".join(_parts))
+
     st.divider()
 
     # Build display table
@@ -208,45 +274,109 @@ def show_overview() -> None:
     display = display.sort_values(["_sort", "symbol"], ignore_index=True)
     display["状态"] = display["sr_status"].map(lambda s: _STATUS_LABEL.get(s, s))
     display["突破(5d)"] = display["breakout_5d"].map(lambda v: _BREAKOUT_LABEL.get(v, ""))
-    display["斜率(5d)"] = display["trend_slope_5d"].map(
-        lambda v: f"{v*100:+.3f}%" if pd.notna(v) else ""
-    )
-    display["R²"] = display["trend_r2_5d"].map(
-        lambda v: f"{v:.2f}" if pd.notna(v) else ""
-    )
-    display["距支撑(ATR)"] = display["dist_support_atr"].map(
-        lambda v: f"{v:.2f}" if pd.notna(v) else "—"
-    )
-    display["距阻力(ATR)"] = display["dist_resistance_atr"].map(
-        lambda v: f"{v:.2f}" if pd.notna(v) else "—"
-    )
-    display["支撑价"] = display["nearest_support"].map(
-        lambda v: f"{v:.2f}" if pd.notna(v) else "—"
-    )
-    display["阻力价"] = display["nearest_resistance"].map(
-        lambda v: f"{v:.2f}" if pd.notna(v) else "—"
-    )
+    display["斜率(5d)"] = pd.to_numeric(display["trend_slope_5d"], errors="coerce") * 100
+    display["R²(5d)"] = pd.to_numeric(display["trend_r2_5d"], errors="coerce")
+    display["斜率(10d)"] = pd.to_numeric(display["trend_slope_10d"], errors="coerce") * 100
+    display["R²(10d)"] = pd.to_numeric(display["trend_r2_10d"], errors="coerce")
+    display["斜率(20d)"] = pd.to_numeric(display["trend_slope_20d"], errors="coerce") * 100
+    display["R²(20d)"] = pd.to_numeric(display["trend_r2_20d"], errors="coerce")
+    display["斜率(40d)"] = pd.to_numeric(display["trend_slope_40d"], errors="coerce") * 100
+    display["R²(40d)"] = pd.to_numeric(display["trend_r2_40d"], errors="coerce")
+    display["斜率(60d)"] = pd.to_numeric(display["trend_slope_60d"], errors="coerce") * 100
+    display["R²(60d)"] = pd.to_numeric(display["trend_r2_60d"], errors="coerce")
+    # Keep numeric columns as float (NaN for missing) so table sorting works correctly
+    display["支撑价"] = pd.to_numeric(display["nearest_support"], errors="coerce")
+    display["距支撑(ATR)"] = pd.to_numeric(display["dist_support_atr"], errors="coerce")
+    display["阻力价"] = pd.to_numeric(display["nearest_resistance"], errors="coerce")
+    display["距阻力(ATR)"] = pd.to_numeric(display["dist_resistance_atr"], errors="coerce")
 
-    show_cols = ["symbol", "状态", "支撑价", "距支撑(ATR)", "阻力价", "距阻力(ATR)", "突破(5d)", "斜率(5d)", "R²"]
-    display_df = display[show_cols].copy()
+    show_cols = ["symbol", "状态", "支撑价", "距支撑(ATR)", "阻力价", "距阻力(ATR)", "突破(5d)",
+                 "斜率(5d)", "R²(5d)", "斜率(10d)", "R²(10d)", "斜率(20d)", "R²(20d)",
+                 "斜率(40d)", "R²(40d)", "斜率(60d)", "R²(60d)"]
 
-    st.subheader(f"{selected_date} 分析快照")
-    st.caption("点击任意行可查看该股票详情")
+    # Group by DB source: ETF = universe table; 个股 = OPTIONS_ACTIVE constituents
+    _etf_set: frozenset[str] = _fetch_etf_set()
+    _stock_set: frozenset[str] = _fetch_stock_set()
+    _known = _etf_set | _stock_set
 
-    event = st.dataframe(
-        display_df,
-        use_container_width=True,
-        hide_index=True,
-        on_select="rerun",
-        selection_mode="single-row",
-    )
+    # ETF table: add sub_category column from universe table
+    _subcat_map = _fetch_etf_subcategory_map()
+    etf_base = display[display["symbol"].isin(_etf_set)].copy()
+    etf_base["类别"] = etf_base["symbol"].map(_subcat_map).fillna("")
+    etf_show_cols = ["symbol", "类别"] + show_cols[1:]  # insert after symbol
+    display_etf   = etf_base[etf_show_cols].copy()
 
-    if event.selection and event.selection.rows:
-        row_idx = event.selection.rows[0]
-        symbol = str(display.iloc[row_idx]["symbol"])
-        st.session_state.selected_symbol = symbol
-        st.session_state.page = "detail"
-        st.rerun()
+    display_stock = display[display["symbol"].isin(_stock_set)][show_cols].copy()
+    display_other = display[~display["symbol"].isin(_known)][show_cols].copy()
+
+    st.subheader(f"{selected_date} 策略快照")
+    st.caption("点击任意行，在新标签页查看该股票详情")
+
+    with st.expander("状态说明", expanded=False):
+        st.markdown(
+            """
+| 状态 | 含义 | 触发条件 |
+|------|------|---------|
+| 🔵 在支撑位 | 价格已进入 SR 区，从上方跌入（支撑） | 收盘在区间内，向前回溯确认从上方进入 |
+| 🔴 在阻力位 | 价格已进入 SR 区，从下方涨入（阻力） | 收盘在区间内，向前回溯确认从下方进入 |
+| ⚠️ 警告 | 距最近 SR 区非常近 | 距区间边缘 ≤ 0.5×ATR14 |
+| 👀 关注 | 距最近 SR 区较近 | 距区间边缘 ≤ 1.5×ATR14 |
+| （空） | 正常，距所有 SR 区较远 | 距所有区间边缘 > 1.5×ATR14 |
+
+**突破(5d)**：过去 5 根 K 线内价格穿越某 SR 区中心价格，🟢 向上突破 / 🔴 向下跌破。
+
+**距支撑/阻力(ATR)**：正值 = 尚未到达，负值 = 已在区间内。绝对值越小说明越近。
+            """
+        )
+
+    _col_cfg = {
+        "支撑价":      st.column_config.NumberColumn("支撑价",      format="%.2f"),
+        "距支撑(ATR)": st.column_config.NumberColumn("距支撑(ATR)", format="%.2f"),
+        "阻力价":      st.column_config.NumberColumn("阻力价",      format="%.2f"),
+        "距阻力(ATR)": st.column_config.NumberColumn("距阻力(ATR)", format="%.2f"),
+        "斜率(5d)":    st.column_config.NumberColumn("斜率(5d)",    format="%+.3f%%"),
+        "R²(5d)":      st.column_config.NumberColumn("R²(5d)",      format="%.2f"),
+        "斜率(10d)":   st.column_config.NumberColumn("斜率(10d)",   format="%+.3f%%"),
+        "R²(10d)":     st.column_config.NumberColumn("R²(10d)",     format="%.2f"),
+        "斜率(20d)":   st.column_config.NumberColumn("斜率(20d)",   format="%+.3f%%"),
+        "R²(20d)":     st.column_config.NumberColumn("R²(20d)",     format="%.2f"),
+    }
+
+    def _render_table(df: pd.DataFrame, key: str, max_height: int = 0) -> None:
+        if df.empty:
+            return
+        row_height = 35
+        natural = len(df) * row_height + 38
+        table_height = natural if max_height == 0 else min(natural, max_height)
+        event = st.dataframe(
+            df,
+            use_container_width=True,
+            hide_index=True,
+            height=table_height,
+            on_select="rerun",
+            selection_mode="single-row",
+            key=key,
+            column_config=_col_cfg,
+        )
+        if event.selection and event.selection.rows:
+            row_idx = event.selection.rows[0]
+            symbol = str(df.iloc[row_idx]["symbol"])
+            components.html(
+                f'<script>window.parent.open("/?symbol={symbol}", "_blank");</script>',
+                height=0,
+            )
+
+    if not display_etf.empty:
+        st.markdown(f"**ETF**（{len(display_etf)} 个）")
+        _render_table(display_etf, key="tbl_etf")          # no cap — show all ETFs
+
+    if not display_stock.empty:
+        st.markdown(f"**个股**（{len(display_stock)} 个）")
+        _render_table(display_stock, key="tbl_stock", max_height=1000)
+
+    if not display_other.empty:
+        st.markdown(f"**其他**（{len(display_other)} 个）")
+        _render_table(display_other, key="tbl_other", max_height=600)
 
 
 # ---------------------------------------------------------------------------
@@ -492,8 +622,11 @@ def show_detail(symbol: str) -> None:
         col2.metric("距阻力(ATR)", f"{latest['dist_resistance_atr']:.2f}" if latest.get("dist_resistance_atr") is not None else "—")
         col3.metric("ATR14", f"{latest['atr_14']:.2f}" if latest.get("atr_14") else "—")
         col3.metric("突破(5d)", _BREAKOUT_LABEL.get(latest.get("breakout_5d"), "") or "—")
-        col4.metric("趋势斜率(5d)", f"{latest['trend_slope_5d']*100:+.3f}%" if latest.get("trend_slope_5d") is not None else "—")
-        col4.metric("R²", f"{latest['trend_r2_5d']:.2f}" if latest.get("trend_r2_5d") is not None else "—")
+        col4.metric("斜率(5d)", f"{latest['trend_slope_5d']*100:+.3f}%" if latest.get("trend_slope_5d") is not None else "—")
+        col4.metric("斜率(10d)", f"{latest['trend_slope_10d']*100:+.3f}%" if latest.get("trend_slope_10d") is not None else "—")
+        col4.metric("斜率(20d)", f"{latest['trend_slope_20d']*100:+.3f}%" if latest.get("trend_slope_20d") is not None else "—")
+        col4.metric("斜率(40d)", f"{latest['trend_slope_40d']*100:+.3f}%" if latest.get("trend_slope_40d") is not None else "—")
+        col4.metric("斜率(60d)", f"{latest['trend_slope_60d']*100:+.3f}%" if latest.get("trend_slope_60d") is not None else "—")
 
     # Historical snapshot table
     st.subheader("历史快照")
@@ -503,21 +636,449 @@ def show_detail(symbol: str) -> None:
     if not hist.empty:
         hist_disp = hist[["date", "sr_status", "nearest_support", "nearest_resistance",
                            "dist_support_atr", "dist_resistance_atr",
-                           "breakout_5d", "trend_slope_5d", "trend_r2_5d"]].copy()
+                           "breakout_5d", "trend_slope_5d", "trend_r2_5d",
+                           "trend_slope_10d", "trend_r2_10d",
+                           "trend_slope_20d", "trend_r2_20d",
+                           "trend_slope_40d", "trend_r2_40d",
+                           "trend_slope_60d", "trend_r2_60d"]].copy()
         hist_disp["sr_status"] = hist_disp["sr_status"].map(lambda s: _STATUS_LABEL.get(s, s))
         hist_disp["breakout_5d"] = hist_disp["breakout_5d"].map(lambda v: _BREAKOUT_LABEL.get(v, ""))
-        hist_disp["trend_slope_5d"] = hist_disp["trend_slope_5d"].map(
-            lambda v: f"{v*100:+.3f}%" if pd.notna(v) else ""
-        )
+        for col in ["trend_slope_5d", "trend_slope_10d", "trend_slope_20d",
+                    "trend_slope_40d", "trend_slope_60d"]:
+            hist_disp[col] = hist_disp[col].map(lambda v: f"{v*100:+.3f}%" if pd.notna(v) else "")
         hist_disp = hist_disp.rename(columns={
             "date": "日期", "sr_status": "状态",
             "nearest_support": "支撑价", "nearest_resistance": "阻力价",
             "dist_support_atr": "距支撑(ATR)", "dist_resistance_atr": "距阻力(ATR)",
-            "breakout_5d": "突破(5d)", "trend_slope_5d": "斜率(5d)", "trend_r2_5d": "R²",
+            "breakout_5d": "突破(5d)",
+            "trend_slope_5d": "斜率(5d)", "trend_r2_5d": "R²(5d)",
+            "trend_slope_10d": "斜率(10d)", "trend_r2_10d": "R²(10d)",
+            "trend_slope_20d": "斜率(20d)", "trend_r2_20d": "R²(20d)",
+            "trend_slope_40d": "斜率(40d)", "trend_r2_40d": "R²(40d)",
+            "trend_slope_60d": "斜率(60d)", "trend_r2_60d": "R²(60d)",
         })
         st.dataframe(hist_disp, use_container_width=True, hide_index=True)
     else:
         st.info("暂无历史快照数据。")
+
+
+# ---------------------------------------------------------------------------
+# Sector Heat helpers
+# ---------------------------------------------------------------------------
+
+def _heat_color(ratio: float | None) -> str:
+    """Return a color string for a given turnover_ratio."""
+    if ratio is None:
+        return ""
+    if ratio >= 3.0:
+        return "🔴"
+    if ratio >= 2.0:
+        return "🟠"
+    if ratio >= 1.5:
+        return "🟡"
+    return ""
+
+
+@st.cache_data(ttl=600, show_spinner=False)
+def _fetch_sector_heat_snapshot_cached(target_date: "date") -> pd.DataFrame:
+    return fetch_sector_heat_snapshot(target_date)
+
+
+@st.cache_data(ttl=600, show_spinner="正在计算板块历史热度...")
+def _compute_sector_heat_history_cached(
+    universe_ticker: str,
+    start_dt: "date",
+    end_dt: "date",
+    source: str = "tiingo",
+) -> pd.DataFrame:
+    """
+    Fetch raw constituent turnover and compute rolling heat metrics dynamically.
+    Adds 90-day warm-up before start_dt so MA20 / z-score are valid from day 1.
+    Returns data filtered to [start_dt, end_dt].
+    """
+    stock_tickers = fetch_constituents_for_ticker(universe_ticker)
+    if not stock_tickers:
+        return pd.DataFrame()
+    warmup_start = start_dt - timedelta(days=90)
+    wide_df = fetch_constituent_turnover_batch(stock_tickers, warmup_start, source=source)
+    if wide_df.empty:
+        return pd.DataFrame()
+    hist_df = compute_sector_heat_history(universe_ticker, wide_df)
+    if hist_df.empty:
+        return pd.DataFrame()
+    # Filter to the user-requested display range
+    mask = (hist_df["date"] >= pd.Timestamp(start_dt)) & (hist_df["date"] <= pd.Timestamp(end_dt))
+    return hist_df[mask].reset_index(drop=True)
+
+
+# ---------------------------------------------------------------------------
+# Sector Heat Overview page
+# ---------------------------------------------------------------------------
+
+def show_sector_heat_overview() -> None:
+    st.title("🔥 板块资金热度")
+
+    latest_db_date = fetch_latest_sector_heat_date()
+    default_date = latest_db_date if latest_db_date is not None else date.today()
+
+    with st.sidebar:
+        st.header("筛选")
+        selected_date = st.date_input("日期", value=default_date, key="sh_date")
+        if latest_db_date is not None and latest_db_date < date.today():
+            st.caption(f"最新数据：{latest_db_date}（今日数据待更新）")
+        st.divider()
+        if st.button("▶ 运行热度分析", use_container_width=True):
+            with st.spinner("正在运行 market-analysis run-sector-heat ..."):
+                result = subprocess.run(
+                    ["market-analysis", "run-sector-heat"],
+                    capture_output=True, text=True,
+                    cwd=str(Path(__file__).parent),
+                )
+            if result.returncode == 0:
+                st.success("分析完成，正在刷新数据...")
+                st.cache_data.clear()
+                st.rerun()
+            else:
+                st.error(
+                    f"运行失败：\n```\n"
+                    f"{result.stderr[-500:] if result.stderr else result.stdout[-500:]}\n```"
+                )
+        if st.button("🔄 刷新数据", use_container_width=True, key="sh_refresh"):
+            st.cache_data.clear()
+            st.rerun()
+
+    df = _fetch_sector_heat_snapshot_cached(selected_date)
+
+    if df.empty:
+        st.warning(
+            f"**{selected_date}** 暂无板块热度数据。\n\n"
+            "请运行：\n```\nmarket-analysis run-sector-heat\n```"
+        )
+        return
+
+    # Metrics bar
+    n_total = len(df)
+    n_hot = int((pd.to_numeric(df["turnover_ratio"], errors="coerce") >= 2.0).sum())
+    n_very_hot = int((pd.to_numeric(df["turnover_ratio"], errors="coerce") >= 3.0).sum())
+    avg_ratio = pd.to_numeric(df["turnover_ratio"], errors="coerce").mean()
+
+    c1, c2, c3, c4 = st.columns(4)
+    c1.metric("板块总数", n_total)
+    c2.metric("放量板块 (ratio≥2)", n_hot)
+    c3.metric("异常放量 (ratio≥3)", n_very_hot)
+    c4.metric("平均热度倍数", f"{avg_ratio:.2f}" if pd.notna(avg_ratio) else "—")
+
+    st.divider()
+    st.subheader(f"{selected_date} 板块热度快照")
+    st.caption("点击任意行，在新标签页查看该板块详情")
+
+    with st.expander("指标说明", expanded=False):
+        st.markdown(
+            """
+| 指标 | 含义 |
+|------|------|
+| 成交额 | 板块成分股 `close × volume` 之和（美元） |
+| 热度倍数 | 今日成交额 / 20日均值，>2 放量，>3 异常放量 |
+| Z-score | 60日统计偏差，>2σ 为统计意义上的异常 |
+| 成分股数 | 当天有行情数据的成分股数量 |
+
+**热度标记**：🔴 ratio≥3（异常放量）　🟠 ratio≥2（明显放量）　🟡 ratio≥1.5（温和放量）
+            """
+        )
+
+    display = df.copy()
+    display["热度"] = pd.to_numeric(display["turnover_ratio"], errors="coerce").map(
+        lambda v: _heat_color(v) if pd.notna(v) else ""
+    )
+    display["成交额(亿$)"] = pd.to_numeric(display["sector_turnover"], errors="coerce") / 1e8
+    display["均值(亿$)"] = pd.to_numeric(display["turnover_ma20"], errors="coerce") / 1e8
+    display["热度倍数"] = pd.to_numeric(display["turnover_ratio"], errors="coerce")
+    display["Z-score"] = pd.to_numeric(display["turnover_zscore"], errors="coerce")
+    display["成分股"] = display["constituent_count"]
+
+    show_cols = ["universe_ticker", "热度", "成交额(亿$)", "均值(亿$)", "热度倍数", "Z-score", "成分股"]
+
+    col_cfg = {
+        "成交额(亿$)": st.column_config.NumberColumn("成交额(亿$)", format="%.2f"),
+        "均值(亿$)":   st.column_config.NumberColumn("均值(亿$)",   format="%.2f"),
+        "热度倍数":    st.column_config.NumberColumn("热度倍数",    format="%.2f"),
+        "Z-score":     st.column_config.NumberColumn("Z-score",     format="%.2f"),
+    }
+
+    row_height = 35
+    table_height = min(len(display) * row_height + 38, 600)
+    event = st.dataframe(
+        display[show_cols],
+        use_container_width=True,
+        hide_index=True,
+        height=table_height,
+        on_select="rerun",
+        selection_mode="single-row",
+        key="sh_overview_tbl",
+        column_config=col_cfg,
+    )
+    if event.selection and event.selection.rows:
+        row_idx = event.selection.rows[0]
+        sector = str(display[show_cols].iloc[row_idx]["universe_ticker"])
+        components.html(
+            f'<script>window.parent.open("/?sector={sector}", "_blank");</script>',
+            height=0,
+        )
+
+
+# ---------------------------------------------------------------------------
+# Sector Heat Detail page
+# ---------------------------------------------------------------------------
+
+# Row heights in px used to compute total figure height
+_SECTOR_ROW_HEIGHT_PX: dict[str, int] = {
+    "kline": 340, "turnover": 190, "ratio": 190, "zscore": 190,
+}
+# Relative weights for y-axis domain sizing
+_SECTOR_ROW_WEIGHT: dict[str, float] = {
+    "kline": 3.4, "turnover": 1.9, "ratio": 1.9, "zscore": 1.9,
+}
+
+
+def show_sector_heat_detail(universe_ticker: str) -> None:
+    if st.button("← 返回板块热度"):
+        st.session_state.page = "sector_heat"
+        st.session_state.selected_sector = None
+        st.rerun()
+
+    st.title(f"🔥 {universe_ticker} — 板块热度详情")
+
+    latest = fetch_latest_sector_heat_for_ticker(universe_ticker)
+    if latest:
+        ratio = latest.get("turnover_ratio")
+        snap_date = latest.get("date")
+        if hasattr(snap_date, "date"):
+            snap_date = snap_date.date()
+        if ratio is not None and ratio >= 3.0:
+            st.error(f"🔴 **异常放量** — 热度倍数 {ratio:.2f}x（数据日期：{snap_date}）")
+        elif ratio is not None and ratio >= 2.0:
+            st.warning(f"🟠 **明显放量** — 热度倍数 {ratio:.2f}x（数据日期：{snap_date}）")
+        elif ratio is not None and ratio >= 1.5:
+            st.info(f"🟡 **温和放量** — 热度倍数 {ratio:.2f}x（数据日期：{snap_date}）")
+
+    # First sidebar block: date range
+    with st.sidebar:
+        st.header("历史范围")
+        hist_days = st.slider("历史天数", min_value=60, max_value=500, value=180, step=30)
+        st.divider()
+
+    end_dt = date.today()
+    start_dt = end_dt - timedelta(days=hist_days)
+
+    # Check ETF K-line availability (cached, near-instant)
+    ohlcv = _fetch_ohlcv_cached(universe_ticker)
+    ohlcv_range = ohlcv[ohlcv.index >= pd.Timestamp(start_dt)] if not ohlcv.empty else pd.DataFrame()
+    has_kline = not ohlcv_range.empty
+
+    # Second sidebar block: indicator toggles (needs has_kline)
+    with st.sidebar:
+        st.subheader("指标开关")
+        show_kline    = st.checkbox("K线图",          value=has_kline,  disabled=not has_kline,
+                                    help="无ETF行情数据" if not has_kline else None)
+        show_turnover = st.checkbox("成交额 + MA20",   value=True)
+        show_ratio    = st.checkbox("热度倍数 (ratio)", value=True)
+        show_zscore   = st.checkbox("Z-score (60日)",  value=True)
+        st.divider()
+
+    # Fetch dynamic heat history
+    hist_df = _compute_sector_heat_history_cached(universe_ticker, start_dt, end_dt)
+    if hist_df.empty:
+        st.info("暂无成分股行情数据，请确认 universe_constituents 表已有该板块的成分股。")
+        return
+
+    # Build subplot row list based on toggles
+    row_labels: list[str] = []
+    if show_kline and has_kline:
+        row_labels.append("kline")
+    if show_turnover:
+        row_labels.append("turnover")
+    if show_ratio:
+        row_labels.append("ratio")
+    if show_zscore:
+        row_labels.append("zscore")
+
+    if not row_labels:
+        st.info("请至少开启一个指标。")
+        return
+
+    n_rows = len(row_labels)
+    total_height = sum(_SECTOR_ROW_HEIGHT_PX[l] for l in row_labels)
+    weights = [_SECTOR_ROW_WEIGHT[l] for l in row_labels]
+    total_weight = sum(weights)
+
+    # Build Plotly y-axis domains (0=bottom, 1=top).
+    # row_labels[0] is the topmost panel; row_labels[-1] is the bottom.
+    # We build from the bottom upward.
+    _spacing = 0.025
+    _avail = 1.0 - _spacing * max(n_rows - 1, 0)
+    _domains: dict[str, list[float]] = {}
+    _cursor = 0.0
+    for _lbl, _w in zip(reversed(row_labels), reversed(weights)):
+        _frac = _w / total_weight * _avail
+        _domains[_lbl] = [round(_cursor, 5), round(_cursor + _frac, 5)]
+        _cursor += _frac + _spacing
+
+    # y-axis key helpers: row 0 → "y"/"yaxis", row 1 → "y2"/"yaxis2", …
+    def _yref(i: int) -> str:
+        return "y" if i == 0 else f"y{i + 1}"
+
+    def _ykey(i: int) -> str:
+        return "yaxis" if i == 0 else f"yaxis{i + 1}"
+
+    _spike_y = dict(
+        showspikes=True,
+        spikemode="across",
+        spikecolor="rgba(180,180,180,0.4)",
+        spikethickness=1,
+        spikedash="dot",
+        spikesnap="cursor",
+    )
+
+    x_min = hist_df["date"].iloc[0]
+    x_max = hist_df["date"].iloc[-1]
+
+    # Single x-axis: all traces share xaxis="x", so one spike covers all rows.
+    fig = go.Figure()
+
+    layout_extra: dict = {
+        "xaxis": dict(
+            showspikes=True,
+            spikemode="across",
+            spikecolor="rgba(180,180,180,0.6)",
+            spikethickness=1,
+            spikedash="dot",
+            spikesnap="cursor",
+            rangeslider=dict(visible=False),
+            domain=[0.0, 1.0],
+        ),
+    }
+
+    for row_idx, label in enumerate(row_labels):
+        yr   = _yref(row_idx)
+        ykey = _ykey(row_idx)
+        dom  = _domains[label]
+
+        if label == "kline":
+            fig.add_trace(go.Candlestick(
+                x=ohlcv_range.index,
+                open=ohlcv_range["open"], high=ohlcv_range["high"],
+                low=ohlcv_range["low"],  close=ohlcv_range["close"],
+                name="K线",
+                increasing_line_color="#26a69a",
+                decreasing_line_color="#ef5350",
+                showlegend=False,
+                yaxis=yr,
+            ))
+            layout_extra[ykey] = dict(domain=dom, anchor="x", title_text="价格", **_spike_y)
+
+        elif label == "turnover":
+            fig.add_trace(go.Bar(
+                x=hist_df["date"],
+                y=hist_df["sector_turnover"] / 1e8,
+                name="日成交额(亿$)",
+                marker_color="rgba(33,150,243,0.5)",
+                yaxis=yr,
+            ))
+            if hist_df["turnover_ma20"].notna().any():
+                fig.add_trace(go.Scatter(
+                    x=hist_df["date"],
+                    y=hist_df["turnover_ma20"] / 1e8,
+                    name="MA20(亿$)",
+                    line=dict(color="#ffd600", width=2),
+                    yaxis=yr,
+                ))
+            layout_extra[ykey] = dict(domain=dom, anchor="x", title_text="成交额(亿$)", **_spike_y)
+
+        elif label == "ratio":
+            valid = hist_df["turnover_ratio"].notna()
+            fig.add_trace(go.Scatter(
+                x=hist_df.loc[valid, "date"],
+                y=hist_df.loc[valid, "turnover_ratio"],
+                name="热度倍数",
+                line=dict(color="#26a69a", width=2),
+                yaxis=yr,
+            ))
+            for level, color, lname in [
+                (1.0, "rgba(180,180,180,0.35)", "基准(1x)"),
+                (2.0, "rgba(255,193,7,0.55)",   "放量(2x)"),
+                (3.0, "rgba(239,83,80,0.55)",   "异常(3x)"),
+            ]:
+                fig.add_trace(go.Scatter(
+                    x=[x_min, x_max], y=[level, level],
+                    mode="lines", name=lname,
+                    line=dict(color=color, width=1, dash="dash"),
+                    showlegend=True, hoverinfo="skip",
+                    yaxis=yr,
+                ))
+            layout_extra[ykey] = dict(domain=dom, anchor="x", title_text="热度倍数(x)", **_spike_y)
+
+        elif label == "zscore":
+            valid = hist_df["turnover_zscore"].notna()
+            fig.add_trace(go.Scatter(
+                x=hist_df.loc[valid, "date"],
+                y=hist_df.loc[valid, "turnover_zscore"],
+                name="Z-score",
+                line=dict(color="#ab47bc", width=2),
+                yaxis=yr,
+            ))
+            for level, color in [(2.0, "rgba(255,193,7,0.45)"), (-2.0, "rgba(255,193,7,0.45)")]:
+                fig.add_trace(go.Scatter(
+                    x=[x_min, x_max], y=[level, level],
+                    mode="lines",
+                    line=dict(color=color, width=1, dash="dash"),
+                    name=f"±2σ ({level:+.0f})",
+                    showlegend=False, hoverinfo="skip",
+                    yaxis=yr,
+                ))
+            layout_extra[ykey] = dict(domain=dom, anchor="x", title_text="Z-score(σ)", **_spike_y)
+
+    fig.update_layout(
+        **layout_extra,
+        height=total_height,
+        template="plotly_dark",
+        hovermode="x",
+        margin=dict(l=60, r=60, t=30, b=40),
+        legend=dict(orientation="h", x=0, y=1.02, xanchor="left", yanchor="bottom"),
+        barmode="overlay",
+    )
+    st.plotly_chart(fig, use_container_width=True)
+
+    # Latest snapshot metrics (from DB pre-computed row)
+    if latest:
+        st.subheader("最新快照")
+        m1, m2, m3, m4 = st.columns(4)
+        turnover_b = latest.get("sector_turnover")
+        ma20_b = latest.get("turnover_ma20")
+        m1.metric("成交额(亿$)", f"{turnover_b/1e8:.2f}" if turnover_b else "—")
+        m2.metric("MA20(亿$)", f"{ma20_b/1e8:.2f}" if ma20_b else "—")
+        m3.metric("热度倍数", f"{latest.get('turnover_ratio'):.2f}" if latest.get("turnover_ratio") else "—")
+        m4.metric("Z-score", f"{latest.get('turnover_zscore'):.2f}" if latest.get("turnover_zscore") is not None else "—")
+
+    # Historical data table
+    st.subheader("历史数据")
+    tbl = hist_df.sort_values("date", ascending=False).copy()
+    tbl["成交额(亿$)"] = tbl["sector_turnover"] / 1e8
+    tbl["均值(亿$)"]   = tbl["turnover_ma20"] / 1e8
+    tbl["热度倍数"]    = tbl["turnover_ratio"]
+    tbl["Z-score"]     = tbl["turnover_zscore"]
+    tbl["成分股"]      = tbl["constituent_count"]
+    tbl["日期"]        = tbl["date"].dt.date
+    st.dataframe(
+        tbl[["日期", "成交额(亿$)", "均值(亿$)", "热度倍数", "Z-score", "成分股"]],
+        use_container_width=True,
+        hide_index=True,
+        column_config={
+            "成交额(亿$)": st.column_config.NumberColumn(format="%.2f"),
+            "均值(亿$)":   st.column_config.NumberColumn(format="%.2f"),
+            "热度倍数":    st.column_config.NumberColumn(format="%.2f"),
+            "Z-score":     st.column_config.NumberColumn(format="%.2f"),
+        },
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -562,17 +1123,55 @@ def show_db_viewer() -> None:
 
     st.divider()
 
-    page_size = st.select_slider("每页行数", options=[20, 50, 100, 200, 500], value=100)
-    total_pages = max(1, (row_count + page_size - 1) // page_size)
-    page_num = st.number_input("页码", min_value=1, max_value=total_pages, value=1, step=1)
-    offset = (page_num - 1) * page_size
-    st.caption(f"第 {page_num}/{total_pages} 页，共 {row_count:,} 行")
+    # --- indicators_daily: symbol + date filter ---
+    if not use_source and selected_table == "indicators_daily":
+        try:
+            all_symbols = fetch_indicators_daily_symbols()
+        except Exception:
+            all_symbols = []
 
-    try:
-        df = fetch_db_table_data(selected_table, limit=page_size, offset=offset, use_source=use_source)
-    except Exception as e:
-        st.error(f"读取数据失败：{e}")
-        return
+        fc1, fc2, fc3 = st.columns([2, 1, 1])
+        sel_symbols = fc1.multiselect("Symbol 筛选", options=all_symbols, placeholder="全部")
+        min_date = fc2.date_input("开始日期", value=None, key="dbv_date_from")
+        max_date = fc3.date_input("结束日期", value=None, key="dbv_date_to")
+
+        page_size = st.select_slider("每页行数", options=[20, 50, 100, 200, 500], value=100)
+
+        try:
+            df, total = fetch_indicators_daily_filtered(
+                symbols=sel_symbols or None,
+                date_from=min_date or None,
+                date_to=max_date or None,
+                limit=page_size,
+                offset=0,
+            )
+            total_pages = max(1, (total + page_size - 1) // page_size)
+            page_num = st.number_input("页码", min_value=1, max_value=total_pages, value=1, step=1)
+            if page_num > 1:
+                df, total = fetch_indicators_daily_filtered(
+                    symbols=sel_symbols or None,
+                    date_from=min_date or None,
+                    date_to=max_date or None,
+                    limit=page_size,
+                    offset=(page_num - 1) * page_size,
+                )
+            st.caption(f"第 {page_num}/{total_pages} 页，共 {total:,} 行")
+        except Exception as e:
+            st.error(f"读取数据失败：{e}")
+            return
+
+    else:
+        page_size = st.select_slider("每页行数", options=[20, 50, 100, 200, 500], value=100)
+        total_pages = max(1, (row_count + page_size - 1) // page_size)
+        page_num = st.number_input("页码", min_value=1, max_value=total_pages, value=1, step=1)
+        offset = (page_num - 1) * page_size
+        st.caption(f"第 {page_num}/{total_pages} 页，共 {row_count:,} 行")
+
+        try:
+            df = fetch_db_table_data(selected_table, limit=page_size, offset=offset, use_source=use_source)
+        except Exception as e:
+            st.error(f"读取数据失败：{e}")
+            return
 
     st.dataframe(df, use_container_width=True, hide_index=True)
 
@@ -581,35 +1180,50 @@ def show_db_viewer() -> None:
 # Global navigation
 # ---------------------------------------------------------------------------
 _NAV_LABELS = {
-    "overview": "📈 日常快照",
-    "db_viewer": "🗄️ 数据库查看器",
+    "overview":    "📈 策略快照",
+    "sector_heat": "🔥 板块热度",
+    "db_viewer":   "🗄️ 数据库查看器",
 }
 
-with st.sidebar:
-    current = st.session_state.page if st.session_state.page != "detail" else "overview"
-    nav_choice = st.radio(
-        "页面",
-        options=list(_NAV_LABELS.keys()),
-        format_func=lambda k: _NAV_LABELS[k],
-        index=list(_NAV_LABELS.keys()).index(current),
-        key="_global_nav",
-        label_visibility="collapsed",
-    )
-    if nav_choice != current and st.session_state.page != "detail":
-        st.session_state.page = nav_choice
-        st.rerun()
-    elif nav_choice != current and st.session_state.page == "detail":
-        st.session_state.page = nav_choice
-        st.session_state.selected_symbol = None
-        st.rerun()
-    st.divider()
+_DETAIL_PAGES = {"detail", "sector_heat_detail"}
 
-# ---------------------------------------------------------------------------
-# Router
-# ---------------------------------------------------------------------------
-if st.session_state.page == "overview":
-    show_overview()
-elif st.session_state.page == "db_viewer":
-    show_db_viewer()
+if _symbol_from_url:
+    # Opened in a new tab via ?symbol=XXX — show stock detail directly, no nav
+    show_detail(_symbol_from_url)
+elif _sector_from_url:
+    # Opened in a new tab via ?sector=XXX — show sector detail directly, no nav
+    show_sector_heat_detail(_sector_from_url)
 else:
-    show_detail(st.session_state.selected_symbol)
+    with st.sidebar:
+        _current_page = st.session_state.page
+        _nav_base = _current_page if _current_page not in _DETAIL_PAGES else (
+            "overview" if _current_page == "detail" else "sector_heat"
+        )
+        nav_choice = st.radio(
+            "页面",
+            options=list(_NAV_LABELS.keys()),
+            format_func=lambda k: _NAV_LABELS[k],
+            index=list(_NAV_LABELS.keys()).index(_nav_base),
+            key="_global_nav",
+            label_visibility="collapsed",
+        )
+        if nav_choice != _nav_base:
+            st.session_state.page = nav_choice
+            st.session_state.selected_symbol = None
+            st.session_state.selected_sector = None
+            st.rerun()
+        st.divider()
+
+    # ---------------------------------------------------------------------------
+    # Router
+    # ---------------------------------------------------------------------------
+    if st.session_state.page == "overview":
+        show_overview()
+    elif st.session_state.page == "sector_heat":
+        show_sector_heat_overview()
+    elif st.session_state.page == "sector_heat_detail":
+        show_sector_heat_detail(st.session_state.selected_sector)
+    elif st.session_state.page == "db_viewer":
+        show_db_viewer()
+    else:
+        show_detail(st.session_state.selected_symbol)

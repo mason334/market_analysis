@@ -8,12 +8,15 @@ import structlog
 import yaml
 
 from market_analysis.config import settings
-from market_analysis.db.queries import fetch_ohlcv, upsert_indicators_daily
+from market_analysis.db.queries import fetch_constituents_for_ticker, fetch_universe_ticker_list, fetch_ohlcv, upsert_indicators_daily
 from market_analysis.strategies import STRATEGIES
 
 log = structlog.get_logger(__name__)
 
 _USER_PREFS_FILE = Path(__file__).parent.parent.parent.parent / "config" / "user_prefs.yaml"
+
+# Universe ticker whose constituents are used as the SR analysis symbol list
+_SR_UNIVERSE_TICKER = "OPTIONS_ACTIVE"
 
 
 def _load_sr_params() -> dict[str, Any]:
@@ -24,15 +27,6 @@ def _load_sr_params() -> dict[str, Any]:
             prefs = yaml.safe_load(f) or {}
         base.update(prefs.get("sr", {}))
     return base
-
-
-def load_universe(universe_path: Path) -> list[str]:
-    with universe_path.open(encoding="utf-8") as f:
-        data = yaml.safe_load(f)
-    symbols: list[str] = data.get("symbols", [])
-    if not symbols:
-        raise ValueError(f"No symbols found in {universe_path}")
-    return symbols
 
 
 def run_symbol(
@@ -61,17 +55,35 @@ def run_symbol(
 
 
 def run_pipeline(
-    universe_path: Path,
     target_date: date | None = None,
 ) -> int:
-    symbols = load_universe(universe_path)
+    # Source 1: constituent stocks of OPTIONS_ACTIVE
+    stock_symbols = fetch_constituents_for_ticker(_SR_UNIVERSE_TICKER)
+    # Source 2: ETF tickers (the universe_ticker values themselves)
+    etf_symbols = fetch_universe_ticker_list()
+    # Merge and deduplicate, preserving order (stocks first, then ETFs)
+    seen: set[str] = set()
+    symbols: list[str] = []
+    for s in stock_symbols + etf_symbols:
+        if s not in seen:
+            seen.add(s)
+            symbols.append(s)
+
+    if not symbols:
+        raise ValueError(
+            "No symbols found from OPTIONS_ACTIVE constituents or universe_ticker list."
+        )
     sr_params = _load_sr_params()
     strategy_params: dict[str, Any] = {"support_resistance": sr_params}
     pipeline_cfg: dict[str, Any] = settings.pipeline
     source: str = pipeline_cfg.get("source", "tiingo")
     min_bars: int = pipeline_cfg.get("min_bars", 200)
 
-    log.info("pipeline.start", symbols=len(symbols), date=str(target_date or date.today()))
+    log.info(
+        "pipeline.start",
+        stocks=len(stock_symbols), etfs=len(etf_symbols), total=len(symbols),
+        date=str(target_date or date.today()),
+    )
 
     total = 0
     for symbol in symbols:

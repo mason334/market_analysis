@@ -29,22 +29,24 @@ def init_db() -> None:
     typer.echo("Database schema initialized.")
 
 
-@app.command("run")
-def run(
-    universe: Path = typer.Option(
-        Path("config/universe.yaml"),
-        "--universe",
-        "-u",
-        help="股票池 YAML 文件路径",
-        exists=True,
-        readable=True,
-    ),
-) -> None:
-    """对 universe 中所有股票跑今日分析，结果写入 indicators_daily。"""
-    from market_analysis.pipeline.run_analysis import run_pipeline
+@app.command("run-strategies")
+def run_strategies_cmd() -> None:
+    """从 universe_constituents(OPTIONS_ACTIVE) 和 universe 表取 ticker，跑所有已注册策略，结果写入 indicators_daily。"""
+    from market_analysis.pipeline.run_strategies import run_pipeline
 
-    total = run_pipeline(universe_path=universe)
+    total = run_pipeline()
     typer.echo(f"Done. {total} symbols written to indicators_daily.")
+
+
+@app.command("run-sector-heat")
+def run_sector_heat() -> None:
+    """计算所有板块的今日资金热度快照，结果写入 sector_heat_daily。"""
+    from market_analysis.db.schema import init_schema
+    from market_analysis.pipeline.run_sector_heat import run_sector_heat_pipeline
+
+    init_schema()
+    total = run_sector_heat_pipeline()
+    typer.echo(f"Done. {total} sectors written to sector_heat_daily.")
 
 
 @app.command("show")

@@ -2,101 +2,42 @@
   You can now view your Streamlit app in your browser.
 
   Local URL: http://localhost:8504
-  Network URL: http://10.210.14.254:8504
+  Network URL: http://10.210.14.76:8504
   External URL: http://107.148.207.35:8504
 
-2026-06-02 11:34:37 [info     ] db.pool.created                dbname=market_analysis
-2026-06-02 11:34:39 [info     ] db.source_pool.created         dbname=market_data
-2026-06-02 11:58:38 [info     ] db.pool.created                dbname=market_analysis
-2026-06-02 11:58:44 [info     ] db.source_pool.created         dbname=market_data
-2026-06-02 13:35:02 [info     ] db.pool.created                dbname=market_analysis
-2026-06-02 13:35:08 [info     ] db.source_pool.created         dbname=market_data
-+------------------------- Traceback (most recent call last) --------------------------+
-| 2026-06-02 13:38:03 [info     ] db.pool.created                dbname=market_analysis
-2026-06-02 13:38:07 [info     ] db.source_pool.created         dbname=market_data
-2026-06-02 13:42:10 [info     ] db.pool.created                dbname=market_analysis
-2026-06-02 13:42:11 [info     ] db.source_pool.created         dbname=market_data
-2026-06-02 13:44:04 [info     ] db.pool.created                dbname=market_analysis
-2026-06-02 13:44:06 [info     ] db.source_pool.created         dbname=market_data
-2026-06-02 13:49:33 [info     ] db.pool.created                dbname=market_analysis
-2026-06-02 13:49:36 [info     ] db.source_pool.created         dbname=market_data
-2026-06-02 19:15:53 [info     ] db.pool.created                dbname=market_analysis
-2026-06-02 19:16:00 [info     ] db.source_pool.created         dbname=market_data
-2026-06-02 20:25:37 [info     ] db.pool.created                dbname=market_analysis
-+------------------------- Traceback (most recent call last) --------------------------+
-| 2026-06-02 20:26:29 [info     ] db.pool.created                dbname=market_analysis
-2026-06-02 20:26:30 [info     ] db.source_pool.created         dbname=market_data
-2026-06-02 21:11:40 [info     ] db.pool.created                dbname=market_analysis
-2026-06-02 21:11:42 [info     ] db.source_pool.created         dbname=market_data
-2026-06-02 21:20:19 [info     ] db.pool.created                dbname=market_analysis
-2026-06-02 21:20:21 [info     ] db.source_pool.created         dbname=market_data
-2026-06-02 22:20:23 [info     ] db.pool.created                dbname=market_analysis
-2026-06-02 22:28:02 [info     ] db.source_pool.created         dbname=market_data
-2026-06-02 23:54:22 [info     ] db.pool.created                dbname=market_analysis
-2026-06-02 23:54:30 [info     ] db.source_pool.created         dbname=market_data
-2026-06-02 23:58:38 [info     ] db.pool.created                dbname=market_analysis
-2026-06-02 23:58:49 [info     ] db.source_pool.created         dbname=market_data
-2026-06-02 23:58:50 [info     ] sr_alert.signal                alert_level=3 atr_14=11.756 date=2026-05-29 dist_atr=0.0 is_extreme=False nearest_price=448.55 nearest_type=both signal_type=at_both symbol=MSFT touches=7
-2026-06-03 00:01:59 [info     ] sr_alert.signal                alert_level=1 atr_14=5.5659 date=2026-05-29 dist_atr=0.5282 is_extreme=True nearest_price=315.0 nearest_type=resistance signal_type=watch symbol=AAPL touches=1
-2026-06-03 00:03:31 [info     ] db.pool.created                dbname=market_analysis
-2026-06-03 00:26:01 [info     ] db.pool.created                dbname=market_analysis
-2026-06-03 00:28:58 [info     ] db.pool.created                dbname=market_analysis
-2026-06-03 00:30:32 [info     ] db.pool.created                dbname=market_analysis
-2026-06-03 00:31:50 [info     ] db.source_pool.created         dbname=market_data
-2026-06-03 00:31:51 [info     ] support_resistance.alert       alert_level=1 atr_14=5.5659 date=2026-05-29 dist_atr=0.5282 is_extreme=True nearest_price=315.0 nearest_type=resistance signal_type=watch symbol=AAPL touches=1
-2026-06-03 00:33:17 [info     ] db.pool.created                dbname=market_analysis
-2026-06-03 00:45:46 [info     ] db.pool.created                dbname=market_analysis
-2026-06-03 09:23:36 [info     ] db.source_pool.created         dbname=market_data
-2026-06-03 09:23:36 [info     ] support_resistance.alert       alert_level=1 atr_14=5.5659 date=2026-05-29 dist_atr=0.5282 is_extreme=True nearest_price=315.0 nearest_type=resistance signal_type=watch symbol=AAPL touches=1
-2026-06-03 10:42:46 [info     ] support_resistance.alert       alert_level=1 atr_14=5.5659 date=2026-05-29 dist_atr=0.5282 is_extreme=True nearest_price=315.0 nearest_type=resistance signal_type=watch symbol=AAPL touches=1
-2026-06-03 11:53:35 [info     ] db.pool.created                dbname=market_analysis
-2026-06-03 11:56:27 [info     ] db.pool.created                dbname=market_analysis
-2026-06-03 11:56:27 [info     ] db.source_pool.created         dbname=market_data
-2026-06-03 11:56:27 [debug    ] support_resistance.done        breakout_5d=None date=2026-05-29 sr_status=at_resistance symbol=SPY
-2026-06-03 11:56:27 [debug    ] support_resistance.done        breakout_5d=None date=2026-05-29 sr_status=normal symbol=QQQ
-2026-06-03 11:56:27 [debug    ] support_resistance.done        breakout_5d=None date=2026-05-29 sr_status=normal symbol=IWM
-2026-06-03 11:56:27 [debug    ] support_resistance.done        breakout_5d=None date=2026-05-29 sr_status=at_resistance symbol=DIA
-2026-06-03 11:56:27 [debug    ] support_resistance.done        breakout_5d=None date=2026-05-29 sr_status=normal symbol=SMH
-2026-06-03 11:56:27 [debug    ] support_resistance.done        breakout_5d=None date=2026-05-29 sr_status=normal symbol=AAPL
-2026-06-03 11:56:28 [debug    ] support_resistance.done        breakout_5d=break_up date=2026-05-29 sr_status=at_resistance symbol=MSFT
-2026-06-03 11:56:28 [debug    ] support_resistance.done        breakout_5d=break_down date=2026-05-29 sr_status=warning symbol=NVDA
-2026-06-03 11:56:28 [debug    ] support_resistance.done        breakout_5d=None date=2026-05-29 sr_status=watch symbol=AMZN
-2026-06-03 11:56:28 [debug    ] support_resistance.done        breakout_5d=break_up date=2026-05-29 sr_status=at_support symbol=META
-2026-06-03 11:56:28 [debug    ] support_resistance.done        breakout_5d=None date=2026-05-29 sr_status=at_support symbol=GOOGL
-2026-06-03 11:56:28 [debug    ] support_resistance.done        breakout_5d=break_up date=2026-05-29 sr_status=warning symbol=TSLA
-2026-06-03 11:56:28 [debug    ] support_resistance.done        breakout_5d=break_up date=2026-05-29 sr_status=at_resistance symbol=JPM
-2026-06-03 11:56:28 [debug    ] support_resistance.done        breakout_5d=break_down date=2026-05-29 sr_status=warning symbol=XOM
-2026-06-03 11:56:28 [debug    ] support_resistance.done        breakout_5d=None date=2026-05-29 sr_status=normal symbol=MU
-2026-06-03 11:56:28 [debug    ] support_resistance.done        breakout_5d=None date=2026-05-29 sr_status=normal symbol=INTC
-2026-06-03 11:56:28 [debug    ] support_resistance.done        breakout_5d=None date=2026-05-29 sr_status=normal symbol=ARM
-2026-06-03 12:06:48 [info     ] db.source_pool.created         dbname=market_data
-2026-06-03 12:06:49 [info     ] db.pool.created                dbname=market_analysis
-2026-06-03 12:06:50 [debug    ] support_resistance.done        breakout_5d=None date=2026-05-29 sr_status=at_resistance symbol=SPY
-2026-06-03 12:06:50 [debug    ] support_resistance.done        breakout_5d=None date=2026-05-29 sr_status=normal symbol=QQQ
-2026-06-03 12:06:50 [debug    ] support_resistance.done        breakout_5d=None date=2026-05-29 sr_status=normal symbol=IWM
-2026-06-03 12:06:50 [debug    ] support_resistance.done        breakout_5d=None date=2026-05-29 sr_status=at_resistance symbol=DIA
-2026-06-03 12:06:50 [debug    ] support_resistance.done        breakout_5d=None date=2026-05-29 sr_status=normal symbol=SMH
-2026-06-03 12:06:51 [debug    ] support_resistance.done        breakout_5d=None date=2026-05-29 sr_status=normal symbol=AAPL
-2026-06-03 12:06:51 [debug    ] support_resistance.done        breakout_5d=break_up date=2026-05-29 sr_status=at_resistance symbol=MSFT
-2026-06-03 12:06:51 [debug    ] support_resistance.done        breakout_5d=break_down date=2026-05-29 sr_status=warning symbol=NVDA
-2026-06-03 12:06:52 [debug    ] support_resistance.done        breakout_5d=None date=2026-05-29 sr_status=watch symbol=AMZN
-2026-06-03 12:06:52 [debug    ] support_resistance.done        breakout_5d=break_up date=2026-05-29 sr_status=at_support symbol=META
-2026-06-03 12:06:52 [debug    ] support_resistance.done        breakout_5d=None date=2026-05-29 sr_status=at_support symbol=GOOGL
-2026-06-03 12:06:52 [debug    ] support_resistance.done        breakout_5d=break_up date=2026-05-29 sr_status=warning symbol=TSLA
-2026-06-03 12:06:52 [debug    ] support_resistance.done        breakout_5d=break_up date=2026-05-29 sr_status=at_resistance symbol=JPM
-2026-06-03 12:06:52 [debug    ] support_resistance.done        breakout_5d=break_down date=2026-05-29 sr_status=warning symbol=XOM
-2026-06-03 12:06:52 [debug    ] support_resistance.done        breakout_5d=None date=2026-05-29 sr_status=normal symbol=MU
-2026-06-03 12:06:52 [debug    ] support_resistance.done        breakout_5d=None date=2026-05-29 sr_status=normal symbol=INTC
-2026-06-03 12:06:52 [debug    ] support_resistance.done        breakout_5d=None date=2026-05-29 sr_status=normal symbol=ARM
-+------------------------- Traceback (most recent call last) --------------------------+
-| +------------------------- Traceback (most recent call last) --------------------------+
-| +------------------------- Traceback (most recent call last) --------------------------+
-| 2026-06-03 12:09:36 [info     ] db.pool.created                dbname=market_analysis
-2026-06-03 12:09:38 [info     ] db.source_pool.created         dbname=market_data
-2026-06-03 12:40:43 [info     ] db.pool.created                dbname=market_analysis
-2026-06-03 12:45:05 [info     ] db.pool.created                dbname=market_analysis
-2026-06-03 12:45:33 [info     ] db.source_pool.created         dbname=market_data
-2026-06-03 12:48:58 [info     ] db.pool.created                dbname=market_analysis
-2026-06-03 12:49:00 [info     ] db.source_pool.created         dbname=market_data
-2026-06-03 12:58:51 [info     ] db.pool.created                dbname=market_analysis
-2026-06-03 12:58:54 [info     ] db.source_pool.created         dbname=market_data
+2026-06-12 12:42:30 [info     ] db.pool.created                dbname=market_analysis
+2026-06-12 12:42:40 [info     ] db.source_pool.created         dbname=market_data
+2026-06-12 15:58:12 [info     ] db.pool.created                dbname=market_analysis
+2026-06-12 15:59:14 [info     ] db.source_pool.created         dbname=market_data
+2026-06-12 16:20:23 [info     ] db.pool.created                dbname=market_analysis
+2026-06-12 16:20:23 [info     ] db.source_pool.created         dbname=market_data
+2026-06-12 16:29:58 [info     ] db.pool.created                dbname=market_analysis
+2026-06-12 16:32:24 [info     ] db.source_pool.created         dbname=market_data
+2026-06-12 16:33:15 [info     ] db.pool.created                dbname=market_analysis
+2026-06-12 16:33:16 [info     ] db.source_pool.created         dbname=market_data
+2026-06-12 16:59:24 [info     ] db.pool.created                dbname=market_analysis
+2026-06-12 16:59:25 [info     ] db.source_pool.created         dbname=market_data
+2026-06-12 17:01:39 [info     ] db.pool.created                dbname=market_analysis
+2026-06-12 17:01:55 [info     ] db.source_pool.created         dbname=market_data
+2026-06-12 20:49:56 [info     ] db.pool.created                dbname=market_analysis
+2026-06-12 20:56:03 [info     ] db.source_pool.created         dbname=market_data
+2026-06-12 21:45:26 [info     ] db.pool.created                dbname=market_analysis
+2026-06-12 21:45:47 [info     ] db.source_pool.created         dbname=market_data
+2026-06-12 22:01:29 [info     ] db.pool.created                dbname=market_analysis
+2026-06-12 22:02:23 [info     ] db.source_pool.created         dbname=market_data
+2026-06-12 22:04:51 [info     ] db.pool.created                dbname=market_analysis
+2026-06-12 22:05:10 [info     ] db.source_pool.created         dbname=market_data
+2026-06-12 22:29:56 [info     ] db.pool.created                dbname=market_analysis
+2026-06-12 23:06:48 [info     ] db.pool.created                dbname=market_analysis
+2026-06-12 23:06:52 [info     ] db.source_pool.created         dbname=market_data
+2026-06-14 13:47:33 [info     ] db.pool.created                dbname=market_analysis
+2026-06-14 13:47:54 [info     ] db.source_pool.created         dbname=market_data
+2026-06-14 14:14:47 [info     ] db.pool.created                dbname=market_analysis
+2026-06-14 14:23:19 [info     ] db.pool.created                dbname=market_analysis
+2026-06-14 14:23:20 [info     ] db.source_pool.created         dbname=market_data
+2026-06-14 14:46:22 [info     ] db.pool.created                dbname=market_analysis
+2026-06-14 14:46:52 [info     ] db.source_pool.created         dbname=market_data
+2026-06-14 16:15:21 [info     ] db.pool.created                dbname=market_analysis
+2026-06-14 16:15:21 [info     ] db.source_pool.created         dbname=market_data
+2026-06-14 16:41:12 [info     ] db.pool.created                dbname=market_analysis
+2026-06-14 16:57:24 [info     ] db.source_pool.created         dbname=market_data

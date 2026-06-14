@@ -16,5 +16,5 @@ strategies:
     trend_window: 5         # 线性回归窗口（K线根数）
 
 pipeline:
-  min_bars: 200               # 至少需要的历史交易日数
+  min_bars: 40               # 至少需要的历史交易日数
   source: tiingo              # 数据源标识

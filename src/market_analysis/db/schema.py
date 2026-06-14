@@ -23,6 +23,14 @@ CREATE TABLE IF NOT EXISTS indicators_daily (
     breakout_level        FLOAT,
     trend_slope_5d        FLOAT,
     trend_r2_5d           FLOAT,
+    trend_slope_10d       FLOAT,
+    trend_r2_10d          FLOAT,
+    trend_slope_20d       FLOAT,
+    trend_r2_20d          FLOAT,
+    trend_slope_40d       FLOAT,
+    trend_r2_40d          FLOAT,
+    trend_slope_60d       FLOAT,
+    trend_r2_60d          FLOAT,
     PRIMARY KEY (symbol, date)
 );
 """
@@ -34,10 +42,46 @@ CREATE INDEX IF NOT EXISTS indicators_daily_status_idx ON indicators_daily (sr_s
 """
 
 
+_CREATE_SECTOR_HEAT_DAILY = """
+CREATE TABLE IF NOT EXISTS sector_heat_daily (
+    universe_ticker   TEXT  NOT NULL,
+    date              DATE  NOT NULL,
+    sector_turnover   FLOAT,
+    constituent_count INT,
+    turnover_ma20     FLOAT,
+    turnover_ratio    FLOAT,
+    turnover_zscore   FLOAT,
+    PRIMARY KEY (universe_ticker, date)
+);
+"""
+
+_CREATE_SECTOR_HEAT_DAILY_IDX = """
+CREATE INDEX IF NOT EXISTS sector_heat_daily_date_idx   ON sector_heat_daily (date DESC);
+CREATE INDEX IF NOT EXISTS sector_heat_daily_ticker_idx ON sector_heat_daily (universe_ticker);
+"""
+
+
+_ALTER_INDICATORS_DAILY_ADD_TREND_40_60 = """
+ALTER TABLE indicators_daily ADD COLUMN IF NOT EXISTS trend_slope_40d FLOAT;
+ALTER TABLE indicators_daily ADD COLUMN IF NOT EXISTS trend_r2_40d    FLOAT;
+ALTER TABLE indicators_daily ADD COLUMN IF NOT EXISTS trend_slope_60d FLOAT;
+ALTER TABLE indicators_daily ADD COLUMN IF NOT EXISTS trend_r2_60d    FLOAT;
+"""
+
+
 def init_schema() -> None:
     with get_conn() as conn:
         conn.execute(_CREATE_INDICATORS_DAILY)
+        for stmt in _ALTER_INDICATORS_DAILY_ADD_TREND_40_60.strip().splitlines():
+            stmt = stmt.strip()
+            if stmt:
+                conn.execute(stmt)
         for stmt in _CREATE_INDICATORS_DAILY_IDX.strip().splitlines():
+            stmt = stmt.strip()
+            if stmt:
+                conn.execute(stmt)
+        conn.execute(_CREATE_SECTOR_HEAT_DAILY)
+        for stmt in _CREATE_SECTOR_HEAT_DAILY_IDX.strip().splitlines():
             stmt = stmt.strip()
             if stmt:
                 conn.execute(stmt)

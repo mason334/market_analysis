@@ -161,13 +161,16 @@ ORDER BY date
 # 初始化数据库表
 market-analysis init-db
 
-# 对 universe 跑今日信号分析
-market-analysis run --universe config/universe.yaml
+# SR 分析：从 universe_constituents(OPTIONS_ACTIVE) 取 ticker，写入 indicators_daily
+market-analysis run-sr
 
-# 查看最新信号
-market-analysis show --date 2026-05-21
+# 板块热度分析：从 universe_constituents 取所有板块，写入 sector_heat_daily
+market-analysis run-sector-heat
 
-# 启动 Streamlit
+# 查看指定日期快照
+market-analysis show --date 2026-05-29
+
+# 启动 Streamlit Dashboard
 streamlit run dashboard.py --server.port 8504
 ```
 
@@ -227,7 +230,7 @@ db → 无内部依赖
 cron 建议顺序：
 ```
 05:00  market-data update      # 拉取行情
-05:30  market-analysis run     # 跑信号分析
+05:30  market-analysis run-sr  # 跑 SR 分析（OPTIONS_ACTIVE 成分股）
 ```
 ## 遇到不确定情况的处理方式
 
