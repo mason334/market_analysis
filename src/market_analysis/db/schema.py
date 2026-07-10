@@ -31,6 +31,12 @@ CREATE TABLE IF NOT EXISTS indicators_daily (
     trend_r2_40d          FLOAT,
     trend_slope_60d       FLOAT,
     trend_r2_60d          FLOAT,
+    trend_slope_11_20d    FLOAT,
+    trend_r2_11_20d       FLOAT,
+    trend_slope_20_40d    FLOAT,
+    trend_r2_20_40d       FLOAT,
+    trend_slope_40_60d    FLOAT,
+    trend_r2_40_60d       FLOAT,
     PRIMARY KEY (symbol, date)
 );
 """
@@ -62,10 +68,16 @@ CREATE INDEX IF NOT EXISTS sector_heat_daily_ticker_idx ON sector_heat_daily (un
 
 
 _ALTER_INDICATORS_DAILY_ADD_TREND_40_60 = """
-ALTER TABLE indicators_daily ADD COLUMN IF NOT EXISTS trend_slope_40d FLOAT;
-ALTER TABLE indicators_daily ADD COLUMN IF NOT EXISTS trend_r2_40d    FLOAT;
-ALTER TABLE indicators_daily ADD COLUMN IF NOT EXISTS trend_slope_60d FLOAT;
-ALTER TABLE indicators_daily ADD COLUMN IF NOT EXISTS trend_r2_60d    FLOAT;
+ALTER TABLE indicators_daily ADD COLUMN IF NOT EXISTS trend_slope_40d    FLOAT;
+ALTER TABLE indicators_daily ADD COLUMN IF NOT EXISTS trend_r2_40d       FLOAT;
+ALTER TABLE indicators_daily ADD COLUMN IF NOT EXISTS trend_slope_60d    FLOAT;
+ALTER TABLE indicators_daily ADD COLUMN IF NOT EXISTS trend_r2_60d       FLOAT;
+ALTER TABLE indicators_daily ADD COLUMN IF NOT EXISTS trend_slope_11_20d FLOAT;
+ALTER TABLE indicators_daily ADD COLUMN IF NOT EXISTS trend_r2_11_20d    FLOAT;
+ALTER TABLE indicators_daily ADD COLUMN IF NOT EXISTS trend_slope_20_40d FLOAT;
+ALTER TABLE indicators_daily ADD COLUMN IF NOT EXISTS trend_r2_20_40d    FLOAT;
+ALTER TABLE indicators_daily ADD COLUMN IF NOT EXISTS trend_slope_40_60d FLOAT;
+ALTER TABLE indicators_daily ADD COLUMN IF NOT EXISTS trend_r2_40_60d    FLOAT;
 """
 
 

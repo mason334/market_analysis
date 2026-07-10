@@ -107,12 +107,16 @@ def support_resistance(
     # --- Breakout detection (last breakout_window candles, most recent first) ---
     breakout_5d, breakout_level = _detect_breakout(df, levels, breakout_window)
 
-    # --- Linear regression trend (5d / 10d / 20d / 40d / 60d) ---
-    trend_slope_5d, trend_r2_5d = _compute_trend(df, trend_window)
+    # --- Linear regression trend: cumulative windows (last N bars) ---
+    trend_slope_5d,  trend_r2_5d  = _compute_trend(df, trend_window)
     trend_slope_10d, trend_r2_10d = _compute_trend(df, 10)
     trend_slope_20d, trend_r2_20d = _compute_trend(df, 20)
     trend_slope_40d, trend_r2_40d = _compute_trend(df, 40)
     trend_slope_60d, trend_r2_60d = _compute_trend(df, 60)
+    # --- Linear regression trend: historical segments ---
+    trend_slope_11_20d, trend_r2_11_20d = _compute_trend(df, 20, 10)   # d11-d20
+    trend_slope_20_40d, trend_r2_20_40d = _compute_trend(df, 40, 20)   # d20-d40
+    trend_slope_40_60d, trend_r2_40_60d = _compute_trend(df, 60, 40)   # d40-d60
 
     log.debug(
         "support_resistance.done",
@@ -145,6 +149,12 @@ def support_resistance(
         "trend_r2_40d": trend_r2_40d,
         "trend_slope_60d": trend_slope_60d,
         "trend_r2_60d": trend_r2_60d,
+        "trend_slope_11_20d": trend_slope_11_20d,
+        "trend_r2_11_20d": trend_r2_11_20d,
+        "trend_slope_20_40d": trend_slope_20_40d,
+        "trend_r2_20_40d": trend_r2_20_40d,
+        "trend_slope_40_60d": trend_slope_40_60d,
+        "trend_r2_40_60d": trend_r2_40_60d,
     }
 
 
@@ -255,21 +265,33 @@ def _detect_breakout(
 
 def _compute_trend(
     df: pd.DataFrame,
-    window: int,
+    far: int,
+    near: int = 0,
 ) -> tuple[float | None, float | None]:
     """
-    Linear regression on the last `window` closing prices.
+    Linear regression on a slice of closing prices.
 
-    slope is normalized by the first price in the window
+    near=0 (default): uses the last `far` bars → df[-far:]
+    near>0:           uses df[-far:-near]  (historical segment)
+
+    slope is normalized by the first price in the slice
     (= approximate daily return rate per bar).
 
     Returns (normalized_slope, r_squared) or (None, None).
     """
-    if len(df) < window:
+    if near == 0:
+        if len(df) < far:
+            return None, None
+        y = df["close"].iloc[-far:].values.astype(float)
+    else:
+        if len(df) < far:
+            return None, None
+        y = df["close"].iloc[-far:-near].values.astype(float)
+
+    if len(y) < 2:
         return None, None
 
-    y = df["close"].iloc[-window:].values.astype(float)
-    x = np.arange(window, dtype=float)
+    x = np.arange(len(y), dtype=float)
     slope, _, r_value, _, _ = stats.linregress(x, y)
 
     first_price = y[0]

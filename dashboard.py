@@ -1,6 +1,8 @@
 from __future__ import annotations
 
+import os
 import subprocess
+import sys
 from datetime import date, timedelta
 from pathlib import Path
 from typing import Any
@@ -26,7 +28,7 @@ from market_analysis.db.queries import (
     fetch_constituent_turnover_batch,
     fetch_constituents_for_ticker,
     fetch_universe_ticker_list,
-    fetch_universe_subcategory_map,
+    fetch_universe_category_maps,
     fetch_latest_sector_heat_date,
     fetch_latest_sector_heat_for_ticker,
     fetch_ohlcv,
@@ -164,12 +166,26 @@ def _fetch_stock_set() -> frozenset[str]:
 
 
 @st.cache_data(ttl=3600, show_spinner=False)
-def _fetch_etf_subcategory_map() -> dict[str, str]:
-    return fetch_universe_subcategory_map()
+def _fetch_etf_category_maps() -> tuple[dict[str, str], dict[str, str]]:
+    return fetch_universe_category_maps()
 
 
 _UNIVERSE_FILE = Path(__file__).parent / "config" / "universe.yaml"
 _USER_PREFS_FILE = Path(__file__).parent / "config" / "user_prefs.yaml"
+_PROJECT_ROOT = Path(__file__).parent
+
+
+def _run_cli_command(command: str) -> subprocess.CompletedProcess[str]:
+    """Run the local CLI with the same Python interpreter as Streamlit."""
+    return subprocess.run(
+        [sys.executable, "-m", "market_analysis.cli", command],
+        capture_output=True,
+        encoding="utf-8",
+        env={**os.environ, "PYTHONIOENCODING": "utf-8"},
+        errors="replace",
+        text=True,
+        cwd=str(_PROJECT_ROOT),
+    )
 
 
 def _load_sr_params() -> dict:
@@ -215,21 +231,31 @@ def show_overview() -> None:
         st.divider()
         if st.button("▶ 运行策略分析", use_container_width=True):
             with st.spinner("正在运行 market-analysis run-strategies ..."):
-                result = subprocess.run(
-                    ["market-analysis", "run-strategies"],
-                    capture_output=True, text=True,
-                    cwd=str(Path(__file__).parent),
-                )
+                result = _run_cli_command("run-strategies")
             if result.returncode == 0:
                 st.success("分析完成，正在刷新数据...")
                 st.cache_data.clear()
                 st.rerun()
             else:
-                st.error(f"运行失败：\n```\n{result.stderr[-500:] if result.stderr else result.stdout[-500:]}\n```")
+                output = result.stderr[-500:] if result.stderr else result.stdout[-500:]
+                st.error(f"运行失败：\n```\n{output}\n```")
 
         if st.button("🔄 刷新数据", use_container_width=True):
             st.cache_data.clear()
             st.rerun()
+
+        st.divider()
+        st.caption("列显示")
+        show_sr       = st.checkbox("支撑 / 阻力", value=True)
+        show_breakout = st.checkbox("突破信号", value=True)
+        show_5d       = st.checkbox("斜率 5d", value=True)
+        show_10d      = st.checkbox("斜率 10d", value=True)
+        show_20d      = st.checkbox("斜率 20d", value=True)
+        show_40d      = st.checkbox("斜率 40d", value=False)
+        show_60d      = st.checkbox("斜率 60d", value=False)
+        show_11_20d   = st.checkbox("斜率 d11-20", value=False)
+        show_20_40d   = st.checkbox("斜率 d20-40", value=False)
+        show_40_60d   = st.checkbox("斜率 d40-60", value=False)
 
     df = fetch_indicators_daily_by_date(selected_date)
 
@@ -284,26 +310,51 @@ def show_overview() -> None:
     display["R²(40d)"] = pd.to_numeric(display["trend_r2_40d"], errors="coerce")
     display["斜率(60d)"] = pd.to_numeric(display["trend_slope_60d"], errors="coerce") * 100
     display["R²(60d)"] = pd.to_numeric(display["trend_r2_60d"], errors="coerce")
+    display["斜率(d11-20)"] = pd.to_numeric(display["trend_slope_11_20d"], errors="coerce") * 100
+    display["R²(d11-20)"] = pd.to_numeric(display["trend_r2_11_20d"], errors="coerce")
+    display["斜率(d20-40)"] = pd.to_numeric(display["trend_slope_20_40d"], errors="coerce") * 100
+    display["R²(d20-40)"] = pd.to_numeric(display["trend_r2_20_40d"], errors="coerce")
+    display["斜率(d40-60)"] = pd.to_numeric(display["trend_slope_40_60d"], errors="coerce") * 100
+    display["R²(d40-60)"] = pd.to_numeric(display["trend_r2_40_60d"], errors="coerce")
     # Keep numeric columns as float (NaN for missing) so table sorting works correctly
     display["支撑价"] = pd.to_numeric(display["nearest_support"], errors="coerce")
     display["距支撑(ATR)"] = pd.to_numeric(display["dist_support_atr"], errors="coerce")
     display["阻力价"] = pd.to_numeric(display["nearest_resistance"], errors="coerce")
     display["距阻力(ATR)"] = pd.to_numeric(display["dist_resistance_atr"], errors="coerce")
 
-    show_cols = ["symbol", "状态", "支撑价", "距支撑(ATR)", "阻力价", "距阻力(ATR)", "突破(5d)",
-                 "斜率(5d)", "R²(5d)", "斜率(10d)", "R²(10d)", "斜率(20d)", "R²(20d)",
-                 "斜率(40d)", "R²(40d)", "斜率(60d)", "R²(60d)"]
+    show_cols = ["symbol", "状态"]
+    if show_sr:
+        show_cols += ["支撑价", "距支撑(ATR)", "阻力价", "距阻力(ATR)"]
+    if show_breakout:
+        show_cols += ["突破(5d)"]
+    if show_5d:
+        show_cols += ["斜率(5d)", "R²(5d)"]
+    if show_10d:
+        show_cols += ["斜率(10d)", "R²(10d)"]
+    if show_20d:
+        show_cols += ["斜率(20d)", "R²(20d)"]
+    if show_40d:
+        show_cols += ["斜率(40d)", "R²(40d)"]
+    if show_60d:
+        show_cols += ["斜率(60d)", "R²(60d)"]
+    if show_11_20d:
+        show_cols += ["斜率(d11-20)", "R²(d11-20)"]
+    if show_20_40d:
+        show_cols += ["斜率(d20-40)", "R²(d20-40)"]
+    if show_40_60d:
+        show_cols += ["斜率(d40-60)", "R²(d40-60)"]
 
     # Group by DB source: ETF = universe table; 个股 = OPTIONS_ACTIVE constituents
     _etf_set: frozenset[str] = _fetch_etf_set()
     _stock_set: frozenset[str] = _fetch_stock_set()
     _known = _etf_set | _stock_set
 
-    # ETF table: add sub_category column from universe table
-    _subcat_map = _fetch_etf_subcategory_map()
+    # ETF table: add category + sub_category columns from universe table
+    _cat_map, _subcat_map = _fetch_etf_category_maps()
     etf_base = display[display["symbol"].isin(_etf_set)].copy()
+    etf_base["大类"] = etf_base["symbol"].map(_cat_map).fillna("")
     etf_base["类别"] = etf_base["symbol"].map(_subcat_map).fillna("")
-    etf_show_cols = ["symbol", "类别"] + show_cols[1:]  # insert after symbol
+    etf_show_cols = ["symbol", "大类", "类别"] + show_cols[1:]  # insert after symbol
     display_etf   = etf_base[etf_show_cols].copy()
 
     display_stock = display[display["symbol"].isin(_stock_set)][show_cols].copy()
@@ -340,6 +391,16 @@ def show_overview() -> None:
         "R²(10d)":     st.column_config.NumberColumn("R²(10d)",     format="%.2f"),
         "斜率(20d)":   st.column_config.NumberColumn("斜率(20d)",   format="%+.3f%%"),
         "R²(20d)":     st.column_config.NumberColumn("R²(20d)",     format="%.2f"),
+        "斜率(40d)":   st.column_config.NumberColumn("斜率(40d)",   format="%+.3f%%"),
+        "R²(40d)":     st.column_config.NumberColumn("R²(40d)",     format="%.2f"),
+        "斜率(60d)":    st.column_config.NumberColumn("斜率(60d)",    format="%+.3f%%"),
+        "R²(60d)":      st.column_config.NumberColumn("R²(60d)",      format="%.2f"),
+        "斜率(d11-20)": st.column_config.NumberColumn("斜率(d11-20)", format="%+.3f%%"),
+        "R²(d11-20)":   st.column_config.NumberColumn("R²(d11-20)",   format="%.2f"),
+        "斜率(d20-40)": st.column_config.NumberColumn("斜率(d20-40)", format="%+.3f%%"),
+        "R²(d20-40)":   st.column_config.NumberColumn("R²(d20-40)",   format="%.2f"),
+        "斜率(d40-60)": st.column_config.NumberColumn("斜率(d40-60)", format="%+.3f%%"),
+        "R²(d40-60)":   st.column_config.NumberColumn("R²(d40-60)",   format="%.2f"),
     }
 
     def _render_table(df: pd.DataFrame, key: str, max_height: int = 0) -> None:
@@ -367,12 +428,12 @@ def show_overview() -> None:
             )
 
     if not display_etf.empty:
-        st.markdown(f"**ETF**（{len(display_etf)} 个）")
-        _render_table(display_etf, key="tbl_etf")          # no cap — show all ETFs
+        st.markdown(f"**板块/Theme ETF**（{len(display_etf)} 个）")
+        _render_table(display_etf, key="tbl_etf", max_height=500)
 
     if not display_stock.empty:
-        st.markdown(f"**个股**（{len(display_stock)} 个）")
-        _render_table(display_stock, key="tbl_stock", max_height=1000)
+        st.markdown(f"**Option Active个股**（{len(display_stock)} 个）")
+        _render_table(display_stock, key="tbl_stock", max_height=600)
 
     if not display_other.empty:
         st.markdown(f"**其他**（{len(display_other)} 个）")
@@ -729,11 +790,7 @@ def show_sector_heat_overview() -> None:
         st.divider()
         if st.button("▶ 运行热度分析", use_container_width=True):
             with st.spinner("正在运行 market-analysis run-sector-heat ..."):
-                result = subprocess.run(
-                    ["market-analysis", "run-sector-heat"],
-                    capture_output=True, text=True,
-                    cwd=str(Path(__file__).parent),
-                )
+                result = _run_cli_command("run-sector-heat")
             if result.returncode == 0:
                 st.success("分析完成，正在刷新数据...")
                 st.cache_data.clear()

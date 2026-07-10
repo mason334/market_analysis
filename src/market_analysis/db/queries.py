@@ -23,6 +23,9 @@ _INDICATORS_DAILY_COLS = [
     "trend_slope_20d", "trend_r2_20d",
     "trend_slope_40d", "trend_r2_40d",
     "trend_slope_60d", "trend_r2_60d",
+    "trend_slope_11_20d", "trend_r2_11_20d",
+    "trend_slope_20_40d", "trend_r2_20_40d",
+    "trend_slope_40_60d", "trend_r2_40_60d",
 ]
 
 _FETCH_OHLCV = """
@@ -44,9 +47,12 @@ INSERT INTO indicators_daily (
     trend_slope_10d, trend_r2_10d,
     trend_slope_20d, trend_r2_20d,
     trend_slope_40d, trend_r2_40d,
-    trend_slope_60d, trend_r2_60d
+    trend_slope_60d, trend_r2_60d,
+    trend_slope_11_20d, trend_r2_11_20d,
+    trend_slope_20_40d, trend_r2_20_40d,
+    trend_slope_40_60d, trend_r2_40_60d
 )
-VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
 ON CONFLICT (symbol, date) DO UPDATE SET
     nearest_support     = EXCLUDED.nearest_support,
     nearest_resistance  = EXCLUDED.nearest_resistance,
@@ -67,7 +73,13 @@ ON CONFLICT (symbol, date) DO UPDATE SET
     trend_slope_40d     = EXCLUDED.trend_slope_40d,
     trend_r2_40d        = EXCLUDED.trend_r2_40d,
     trend_slope_60d     = EXCLUDED.trend_slope_60d,
-    trend_r2_60d        = EXCLUDED.trend_r2_60d
+    trend_r2_60d        = EXCLUDED.trend_r2_60d,
+    trend_slope_11_20d  = EXCLUDED.trend_slope_11_20d,
+    trend_r2_11_20d     = EXCLUDED.trend_r2_11_20d,
+    trend_slope_20_40d  = EXCLUDED.trend_slope_20_40d,
+    trend_r2_20_40d     = EXCLUDED.trend_r2_20_40d,
+    trend_slope_40_60d  = EXCLUDED.trend_slope_40_60d,
+    trend_r2_40_60d     = EXCLUDED.trend_r2_40_60d
 """
 
 _FETCH_LATEST_SR_DATE = """
@@ -85,7 +97,10 @@ SELECT symbol, date,
        trend_slope_10d, trend_r2_10d,
        trend_slope_20d, trend_r2_20d,
        trend_slope_40d, trend_r2_40d,
-       trend_slope_60d, trend_r2_60d
+       trend_slope_60d, trend_r2_60d,
+       trend_slope_11_20d, trend_r2_11_20d,
+       trend_slope_20_40d, trend_r2_20_40d,
+       trend_slope_40_60d, trend_r2_40_60d
 FROM indicators_daily
 WHERE date = %s
 ORDER BY symbol
@@ -102,7 +117,10 @@ SELECT symbol, date,
        trend_slope_10d, trend_r2_10d,
        trend_slope_20d, trend_r2_20d,
        trend_slope_40d, trend_r2_40d,
-       trend_slope_60d, trend_r2_60d
+       trend_slope_60d, trend_r2_60d,
+       trend_slope_11_20d, trend_r2_11_20d,
+       trend_slope_20_40d, trend_r2_20_40d,
+       trend_slope_40_60d, trend_r2_40_60d
 FROM indicators_daily
 WHERE symbol = %s AND date BETWEEN %s AND %s
 ORDER BY date DESC
@@ -119,7 +137,10 @@ SELECT symbol, date,
        trend_slope_10d, trend_r2_10d,
        trend_slope_20d, trend_r2_20d,
        trend_slope_40d, trend_r2_40d,
-       trend_slope_60d, trend_r2_60d
+       trend_slope_60d, trend_r2_60d,
+       trend_slope_11_20d, trend_r2_11_20d,
+       trend_slope_20_40d, trend_r2_20_40d,
+       trend_slope_40_60d, trend_r2_40_60d
 FROM indicators_daily
 WHERE symbol = %s
 ORDER BY date DESC
@@ -164,6 +185,12 @@ def upsert_indicators_daily(row: dict[str, Any]) -> None:
                 row.get("trend_r2_40d"),
                 row.get("trend_slope_60d"),
                 row.get("trend_r2_60d"),
+                row.get("trend_slope_11_20d"),
+                row.get("trend_r2_11_20d"),
+                row.get("trend_slope_20_40d"),
+                row.get("trend_r2_20_40d"),
+                row.get("trend_slope_40_60d"),
+                row.get("trend_r2_40_60d"),
             ),
         )
         conn.commit()
@@ -324,8 +351,8 @@ WHERE LENGTH(ticker) <= 4
 ORDER BY ticker
 """
 
-_FETCH_UNIVERSE_SUBCATEGORY_MAP = """
-SELECT ticker, sub_category
+_FETCH_UNIVERSE_CATEGORY_MAPS = """
+SELECT ticker, category, sub_category
 FROM universe
 WHERE LENGTH(ticker) <= 4
 ORDER BY ticker
@@ -345,15 +372,24 @@ def fetch_universe_ticker_list() -> list[str]:
     return [r[0] for r in rows]
 
 
-def fetch_universe_subcategory_map() -> dict[str, str]:
-    """Returns {ticker: sub_category} for all ETF tickers in universe table."""
+def fetch_universe_category_maps() -> tuple[dict[str, str], dict[str, str]]:
+    """Returns ({ticker: category}, {ticker: sub_category}) for all ETF tickers."""
     try:
         with get_source_conn() as conn:
-            rows = conn.execute(_FETCH_UNIVERSE_SUBCATEGORY_MAP).fetchall()
+            rows = conn.execute(_FETCH_UNIVERSE_CATEGORY_MAPS).fetchall()
     except Exception:
-        log.exception("db.fetch_universe_subcategory_map.error")
-        return {}
-    return {r[0]: (r[1] or "") for r in rows}
+        log.exception("db.fetch_universe_category_maps.error")
+        return {}, {}
+    return (
+        {r[0]: (r[1] or "") for r in rows},
+        {r[0]: (r[2] or "") for r in rows},
+    )
+
+
+def fetch_universe_subcategory_map() -> dict[str, str]:
+    """Returns {ticker: sub_category} for all ETF tickers in universe table."""
+    _, subcat = fetch_universe_category_maps()
+    return subcat
 
 
 def fetch_constituents_for_ticker(universe_ticker: str) -> list[str]:
