@@ -1,5 +1,4 @@
-from market_analysis.strategies.support_resistance import support_resistance
+"""Archived legacy strategy modules.
 
-STRATEGIES: dict[str, callable] = {
-    "support_resistance": support_resistance,
-}
+Active analysis code lives in :mod:`market_analysis.indicators`.
+"""

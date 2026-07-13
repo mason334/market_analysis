@@ -1,6 +1,6 @@
-# Market Analysis — 行情信号分析系统
+# Market Analysis — 行情指标分析系统
 
-基于 Python 的量化信号生成系统。每日自动读取股票行情数据，运行支撑阻力位策略分析，同时追踪各板块资金热度，结果持久化存储并通过 Streamlit Dashboard 可视化展示。
+基于 Python 的行情指标分析系统。每日自动读取股票行情数据，计算支撑阻力位、趋势和板块资金热度指标，结果持久化存储并通过 Streamlit Dashboard 可视化展示。
 
 ---
 
@@ -34,7 +34,7 @@ the new tables internally.
 - [执行流程](#执行流程)
 - [快速开始](#快速开始)
 - [参数调整](#参数调整)
-- [新增策略](#新增策略)
+- [新增指标](#新增指标)
 - [模块依赖关系](#模块依赖关系)
 
 ---
@@ -43,8 +43,8 @@ the new tables internally.
 
 | 维度 | 说明 |
 |------|------|
-| 核心职责 | SR 信号生成 + 板块资金热度监控 |
-| 不做的事 | 策略回测、持仓管理、自动下单 |
+| 核心职责 | SR 指标分析 + 趋势指标 + 板块资金热度监控 |
+| 不做的事 | 交易策略、买卖建议、策略回测、持仓管理、自动下单 |
 | 数据来源 | 直连同一 PostgreSQL，读取 `market_data` 库的分复权日线数据 |
 | SR 分析标的 | `universe_constituents(OPTIONS_ACTIVE)` 成分股 + `universe` 表中的 ETF |
 | 板块热度来源 | `universe_constituents` 中所有 `universe_ticker` 的成分股 |
@@ -57,7 +57,7 @@ the new tables internally.
 market_analysis/
 ├── dashboard.py                      # Streamlit 可视化入口
 ├── config/
-│   ├── settings.yaml                 # 策略参数默认值
+│   ├── settings.yaml                 # 指标参数默认值
 │   └── user_prefs.yaml               # 用户参数覆盖（可选，自动生成）
 ├── scripts/                          # shell / cron 脚本
 ├── src/market_analysis/
@@ -66,21 +66,19 @@ market_analysis/
 │   │   ├── __init__.py               # 双连接池（market_analysis + market_data）
 │   │   ├── schema.py                 # 建表（indicators_daily + sector_heat_daily，幂等）
 │   │   └── queries.py                # 所有读写函数
-│   ├── strategies/
-│   │   ├── __init__.py               # STRATEGIES 注册表
-│   │   ├── support_resistance.py     # 当前唯一活跃策略
-│   │   └── archive/                  # 已归档的旧策略（不参与运行）
 │   ├── indicators/
 │   │   ├── support_resistance.py     # 支撑阻力指标计算
 │   │   ├── trend.py                  # 趋势指标计算
 │   │   └── sector_heat.py            # 板块热度指标计算
+│   ├── strategies/
+│   │   └── archive/                  # 已归档的旧策略代码（不参与运行）
 │   ├── pipeline/
 │   │   ├── run_indicators.py         # 每日指标批量执行入口
 │   │   └── run_sector_heat.py        # 板块热度批量执行入口
 │   └── cli.py                        # Typer CLI
 └── tests/
     ├── conftest.py
-    ├── test_strategies.py
+    ├── test_support_resistance.py
     └── test_sector_heat.py
 ```
 
@@ -96,7 +94,7 @@ market_analysis/
 | Dashboard | Streamlit + Plotly |
 | 测试 | pytest |
 | Lint | ruff |
-| 信号处理 | scipy（摆动点检测） |
+| 指标计算 | scipy（摆动点检测）+ statsmodels |
 
 ---
 
@@ -267,15 +265,17 @@ flowchart TD
     FO["db/queries.py\nfetch_ohlcv()\nSELECT FROM daily_bars_split_adjusted"]
     FT["db/queries.py\nfetch_constituent_turnover_batch()\nSELECT close*volume 宽表"]
 
-    SR["strategies/support_resistance.py\n摆动点聚类法\n趋势斜率 5/10/20/40/60d\n-> indicators_daily 一行"]
+    SR["indicators/support_resistance.py\n支撑/阻力指标\n-> support_resistance_daily 一行"]
+    TR["indicators/trend.py\n趋势斜率 5/10/20/40/60d\n-> trend_daily 多行"]
     SH["indicators/sector_heat.py\ncompute_sector_heat()\n-> sector_heat_daily 一行"]
 
-    DST_SR[("market_analysis DB\nindicators_daily")]
+    DST_SR[("market_analysis DB\nsupport_resistance_daily\ntrend_daily")]
     DST_SH[("market_analysis DB\nsector_heat_daily")]
     SRC[("market_data DB\ndaily_bars_split_adjusted\nuniverse_constituents\nuniverse")]
 
     CMD_SR --> RP_SR --> FO --> SRC
     RP_SR --> SR --> DST_SR
+    RP_SR --> TR --> DST_SR
     CMD_SH --> RP_SH --> FT --> SRC
     RP_SH --> SH --> DST_SH
 ```
@@ -428,30 +428,23 @@ Dashboard 侧边栏修改参数后点击"保存"会写入 `user_prefs.yaml`，�
 
 ---
 
-## 新增策略
+## 新增指标
 
-1. 在 `src/market_analysis/strategies/` 新建文件，实现函数：
+1. 在 `src/market_analysis/indicators/` 新建文件，实现纯计算函数：
 
 ```python
-def my_strategy(
+def my_indicator(
     symbol: str,
     df: pd.DataFrame,   # DatetimeIndex，列为 open/high/low/close/volume
     params: dict,
 ) -> dict[str, Any] | None:
-    # 返回一行宽表数据（与 indicators_daily schema 匹配），无信号返回 None
+    # 返回可写入指标快照表的一行数据；无法计算时返回 None
     ...
 ```
 
-2. 在 `strategies/__init__.py` 注册：
-
-```python
-STRATEGIES = {
-    "support_resistance": support_resistance,
-    "my_strategy":        my_strategy,
-}
-```
-
-3. 在 `settings.yaml` 添加参数块，补写单元测试，运行：
+2. 在 `pipeline/` 中读取源数据、调用指标函数，并通过 `db/queries.py` 写入对应快照表。
+3. 在 `schema.py` 增加幂等建表/补字段 SQL，在 `queries.py` 增加读写函数。
+4. 在 `settings.yaml` 添加参数块，补写单元测试，运行：
 
 ```bash
 pytest tests/
@@ -466,8 +459,9 @@ flowchart TD
     CLI["cli.py"]
     PIPE_SR["pipeline/run_indicators.py"]
     PIPE_SH["pipeline/run_sector_heat.py"]
-    STRAT["strategies/support_resistance.py"]
-    ANALYTICS["indicators/sector_heat.py"]
+    SR["indicators/support_resistance.py"]
+    TR["indicators/trend.py"]
+    HEAT["indicators/sector_heat.py"]
     DB["db/\n__init__.py · schema.py · queries.py"]
     DASH["dashboard.py"]
     PG_MA[("market_analysis DB\nindicators_daily\nsector_heat_daily")]
@@ -475,15 +469,17 @@ flowchart TD
 
     CLI --> PIPE_SR
     CLI --> PIPE_SH
-    PIPE_SR --> STRAT
+    PIPE_SR --> SR
+    PIPE_SR --> TR
     PIPE_SR --> DB
-    PIPE_SH --> ANALYTICS
+    PIPE_SH --> HEAT
     PIPE_SH --> DB
     DASH --> DB
-    DASH --> STRAT
-    DASH --> ANALYTICS
+    DASH --> SR
+    DASH --> HEAT
     DB -->|"写"| PG_MA
     DB -->|"读"| PG_MD
-    STRAT -.->|"禁止 import"| DB
-    ANALYTICS -.->|"禁止 import"| DB
+    SR -.->|"禁止 import"| DB
+    TR -.->|"禁止 import"| DB
+    HEAT -.->|"禁止 import"| DB
 ```
