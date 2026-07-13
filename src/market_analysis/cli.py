@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import atexit
 from datetime import date
-from pathlib import Path
 
 import structlog
 import typer
@@ -20,6 +19,14 @@ def _shutdown() -> None:
 atexit.register(_shutdown)
 
 
+def _run_indicators() -> int:
+    from market_analysis.db.schema import init_schema
+    from market_analysis.pipeline.run_indicators import run_pipeline
+
+    init_schema()
+    return run_pipeline()
+
+
 @app.command("init-db")
 def init_db() -> None:
     """初始化数据库表（幂等）。"""
@@ -29,13 +36,18 @@ def init_db() -> None:
     typer.echo("Database schema initialized.")
 
 
+@app.command("run-indicators")
+def run_indicators_cmd() -> None:
+    """从 OPTIONS_ACTIVE 成分股和 universe ETF 计算每日指标快照。"""
+    total = _run_indicators()
+    typer.echo(f"Done. {total} symbols written to indicator tables.")
+
+
 @app.command("run-strategies")
 def run_strategies_cmd() -> None:
-    """从 universe_constituents(OPTIONS_ACTIVE) 和 universe 表取 ticker，跑所有已注册策略，结果写入 indicators_daily。"""
-    from market_analysis.pipeline.run_strategies import run_pipeline
-
-    total = run_pipeline()
-    typer.echo(f"Done. {total} symbols written to indicators_daily.")
+    """兼容旧命令；请优先使用 run-indicators。"""
+    total = _run_indicators()
+    typer.echo(f"Done. {total} symbols written to indicator tables.")
 
 
 @app.command("run-sector-heat")

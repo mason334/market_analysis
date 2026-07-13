@@ -4,12 +4,12 @@ from datetime import date, timedelta
 
 import structlog
 
-from market_analysis.analytics.sector_heat import compute_sector_heat
 from market_analysis.db.queries import (
     fetch_all_universe_constituents,
     fetch_constituent_turnover_batch,
     upsert_sector_heat_daily,
 )
+from market_analysis.indicators.sector_heat import compute_sector_heat
 
 log = structlog.get_logger(__name__)
 

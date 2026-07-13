@@ -8,24 +8,15 @@ import structlog
 
 log = structlog.get_logger(__name__)
 
-_MIN_BARS_MA = 21    # minimum bars to compute MA20 (need 20 + 1 extra)
-_ZSCORE_WINDOW = 60  # rolling window for z-score
+_MIN_BARS_MA = 21
+_ZSCORE_WINDOW = 60
 
 
 def compute_sector_heat(
     universe_ticker: str,
     wide_df: pd.DataFrame,
 ) -> dict[str, Any] | None:
-    """
-    Compute sector heat snapshot for the latest date in wide_df.
-
-    Args:
-        universe_ticker: sector identifier (e.g. "XLK")
-        wide_df: index=DatetimeIndex, columns=stock_ticker, values=close*volume (turnover)
-
-    Returns:
-        dict matching sector_heat_daily schema, or None if insufficient data.
-    """
+    """Compute one sector_heat_daily snapshot for the latest date in wide_df."""
     if wide_df.empty or len(wide_df) < _MIN_BARS_MA:
         log.warning(
             "sector_heat.insufficient_data",
@@ -35,7 +26,6 @@ def compute_sector_heat(
         )
         return None
 
-    # Sum across constituents per day; NaN only if ALL stocks are NaN on that day
     sector_ts = wide_df.sum(axis=1, min_count=1)
     constituent_counts = wide_df.notna().sum(axis=1)
 
@@ -50,23 +40,19 @@ def compute_sector_heat(
 
     latest_date_ts = sector_ts.index[-1]
     latest_turnover = float(sector_ts.iloc[-1])
+    latest_count = (
+        int(constituent_counts.loc[latest_date_ts])
+        if latest_date_ts in constituent_counts.index
+        else 0
+    )
 
-    # constituent_count for the latest date
-    if latest_date_ts in constituent_counts.index:
-        latest_count = int(constituent_counts.loc[latest_date_ts])
-    else:
-        latest_count = 0
-
-    # MA20
     ma20_val = sector_ts.rolling(20).mean().iloc[-1]
     ma20: float | None = float(ma20_val) if pd.notna(ma20_val) else None
 
-    # turnover_ratio = today / MA20
     ratio: float | None = None
     if ma20 is not None and ma20 > 0:
         ratio = latest_turnover / ma20
 
-    # Z-score over 60-day window
     zscore: float | None = None
     if len(sector_ts) >= _ZSCORE_WINDOW:
         window = sector_ts.iloc[-_ZSCORE_WINDOW:]
@@ -93,22 +79,7 @@ def compute_sector_heat_history(
     universe_ticker: str,
     wide_df: pd.DataFrame,
 ) -> pd.DataFrame:
-    """
-    Compute rolling heat metrics for ALL dates in wide_df.
-
-    Use this for the detail page historical charts. Pass extra warm-up data
-    (e.g. 90 calendar days before the display start) so that MA20 and z-score
-    are meaningful from the first displayed date.
-
-    Args:
-        universe_ticker: sector identifier
-        wide_df: index=DatetimeIndex, columns=stock_ticker, values=close*volume
-
-    Returns:
-        DataFrame with columns [universe_ticker, date, sector_turnover,
-        constituent_count, turnover_ma20, turnover_ratio, turnover_zscore].
-        Empty DataFrame if insufficient data.
-    """
+    """Compute rolling sector heat metrics for all dates in wide_df."""
     if wide_df.empty:
         return pd.DataFrame()
 
@@ -119,7 +90,6 @@ def compute_sector_heat_history(
         return pd.DataFrame()
 
     ma20 = sector_ts.rolling(20).mean()
-    # Avoid division by zero: where ma20 == 0, ratio stays NaN
     ratio = sector_ts.div(ma20.replace(0, float("nan")))
 
     rolling_mean = sector_ts.rolling(_ZSCORE_WINDOW).mean()

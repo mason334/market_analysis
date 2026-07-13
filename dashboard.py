@@ -34,8 +34,8 @@ from market_analysis.db.queries import (
     fetch_ohlcv,
     fetch_sector_heat_snapshot,
 )
-from market_analysis.analytics.sector_heat import compute_sector_heat_history
-from market_analysis.strategies.support_resistance import (
+from market_analysis.indicators.sector_heat import compute_sector_heat_history
+from market_analysis.indicators.support_resistance import (
     compute_raw_swings,
     compute_sr_levels,
 )
@@ -190,7 +190,12 @@ def _run_cli_command(command: str) -> subprocess.CompletedProcess[str]:
 
 def _load_sr_params() -> dict:
     """Load SR params: settings.yaml defaults overridden by user_prefs.yaml sr section."""
-    base = dict(settings.strategies.get("support_resistance", {}))
+    base = dict(
+        settings.indicators.get(
+            "support_resistance",
+            settings.strategies.get("support_resistance", {}),
+        )
+    )
     if _USER_PREFS_FILE.exists():
         with _USER_PREFS_FILE.open(encoding="utf-8") as f:
             prefs = yaml.safe_load(f) or {}
@@ -218,7 +223,7 @@ _INDICATORS_DAILY_COLS = [
 # Overview page
 # ---------------------------------------------------------------------------
 def show_overview() -> None:
-    st.title("📈 Market Analysis — 策略快照")
+    st.title("📈 Market Analysis — 指标快照")
 
     latest_db_date = fetch_latest_indicators_daily_date()
     default_date = latest_db_date if latest_db_date is not None else date.today()
@@ -226,12 +231,13 @@ def show_overview() -> None:
     with st.sidebar:
         st.header("筛选")
         selected_date = st.date_input("日期", value=default_date)
+        st.caption("日期代表指标快照对应的行情交易日，不是运行日期。")
         if latest_db_date is not None and latest_db_date < date.today():
             st.caption(f"最新数据：{latest_db_date}（今日数据待更新）")
         st.divider()
-        if st.button("▶ 运行策略分析", use_container_width=True):
-            with st.spinner("正在运行 market-analysis run-strategies ..."):
-                result = _run_cli_command("run-strategies")
+        if st.button("▶ 运行指标分析", use_container_width=True):
+            with st.spinner("正在运行 market-analysis run-indicators ..."):
+                result = _run_cli_command("run-indicators")
             if result.returncode == 0:
                 st.success("分析完成，正在刷新数据...")
                 st.cache_data.clear()
@@ -360,7 +366,7 @@ def show_overview() -> None:
     display_stock = display[display["symbol"].isin(_stock_set)][show_cols].copy()
     display_other = display[~display["symbol"].isin(_known)][show_cols].copy()
 
-    st.subheader(f"{selected_date} 策略快照")
+    st.subheader(f"{selected_date} 指标快照")
     st.caption("点击任意行，在新标签页查看该股票详情")
 
     with st.expander("状态说明", expanded=False):
@@ -785,6 +791,7 @@ def show_sector_heat_overview() -> None:
     with st.sidebar:
         st.header("筛选")
         selected_date = st.date_input("日期", value=default_date, key="sh_date")
+        st.caption("日期代表板块热度快照对应的行情交易日，不是运行日期。")
         if latest_db_date is not None and latest_db_date < date.today():
             st.caption(f"最新数据：{latest_db_date}（今日数据待更新）")
         st.divider()
@@ -1237,7 +1244,7 @@ def show_db_viewer() -> None:
 # Global navigation
 # ---------------------------------------------------------------------------
 _NAV_LABELS = {
-    "overview":    "📈 策略快照",
+    "overview":    "📈 指标快照",
     "sector_heat": "🔥 板块热度",
     "db_viewer":   "🗄️ 数据库查看器",
 }

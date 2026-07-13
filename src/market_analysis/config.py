@@ -28,7 +28,10 @@ class Settings(BaseSettings):
     # Source database — OHLCV (market_data); defaults to same host/user/password
     source_db_name: str = Field(default="market_data")
 
-    # Strategy params — loaded from settings.yaml
+    # Indicator params — loaded from settings.yaml
+    indicators: dict[str, Any] = Field(default_factory=dict)
+
+    # Strategy params — loaded from settings.yaml. Kept for backward-compatible config.
     strategies: dict[str, Any] = Field(default_factory=dict)
 
     # Pipeline

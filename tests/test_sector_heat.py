@@ -1,12 +1,9 @@
 from __future__ import annotations
 
-from datetime import date
-
 import numpy as np
 import pandas as pd
-import pytest
 
-from market_analysis.analytics.sector_heat import compute_sector_heat, compute_sector_heat_history
+from market_analysis.indicators.sector_heat import compute_sector_heat, compute_sector_heat_history
 
 
 def _make_wide_df(n: int = 80, n_stocks: int = 5, seed: int = 0) -> pd.DataFrame:

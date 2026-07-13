@@ -28,11 +28,66 @@ _INDICATORS_DAILY_COLS = [
     "trend_slope_40_60d", "trend_r2_40_60d",
 ]
 
+_TREND_PIVOT_COLS = """
+       MAX(CASE WHEN window_label = '5d' THEN slope END) AS trend_slope_5d,
+       MAX(CASE WHEN window_label = '5d' THEN r2 END) AS trend_r2_5d,
+       MAX(CASE WHEN window_label = '10d' THEN slope END) AS trend_slope_10d,
+       MAX(CASE WHEN window_label = '10d' THEN r2 END) AS trend_r2_10d,
+       MAX(CASE WHEN window_label = '20d' THEN slope END) AS trend_slope_20d,
+       MAX(CASE WHEN window_label = '20d' THEN r2 END) AS trend_r2_20d,
+       MAX(CASE WHEN window_label = '40d' THEN slope END) AS trend_slope_40d,
+       MAX(CASE WHEN window_label = '40d' THEN r2 END) AS trend_r2_40d,
+       MAX(CASE WHEN window_label = '60d' THEN slope END) AS trend_slope_60d,
+       MAX(CASE WHEN window_label = '60d' THEN r2 END) AS trend_r2_60d,
+       MAX(CASE WHEN window_label = '11_20d' THEN slope END) AS trend_slope_11_20d,
+       MAX(CASE WHEN window_label = '11_20d' THEN r2 END) AS trend_r2_11_20d,
+       MAX(CASE WHEN window_label = '20_40d' THEN slope END) AS trend_slope_20_40d,
+       MAX(CASE WHEN window_label = '20_40d' THEN r2 END) AS trend_r2_20_40d,
+       MAX(CASE WHEN window_label = '40_60d' THEN slope END) AS trend_slope_40_60d,
+       MAX(CASE WHEN window_label = '40_60d' THEN r2 END) AS trend_r2_40_60d
+"""
+
 _FETCH_OHLCV = """
 SELECT date, open, high, low, close, volume
 FROM daily_bars_split_adjusted
 WHERE symbol = %s
 ORDER BY date
+"""
+
+_UPSERT_SUPPORT_RESISTANCE_DAILY = """
+INSERT INTO support_resistance_daily (
+    symbol, date,
+    nearest_support, nearest_resistance,
+    dist_support_pct, dist_support_atr,
+    dist_resistance_pct, dist_resistance_atr,
+    atr_14, sr_status,
+    breakout_5d, breakout_level
+)
+VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+ON CONFLICT (symbol, date) DO UPDATE SET
+    nearest_support     = EXCLUDED.nearest_support,
+    nearest_resistance  = EXCLUDED.nearest_resistance,
+    dist_support_pct    = EXCLUDED.dist_support_pct,
+    dist_support_atr    = EXCLUDED.dist_support_atr,
+    dist_resistance_pct = EXCLUDED.dist_resistance_pct,
+    dist_resistance_atr = EXCLUDED.dist_resistance_atr,
+    atr_14              = EXCLUDED.atr_14,
+    sr_status           = EXCLUDED.sr_status,
+    breakout_5d         = EXCLUDED.breakout_5d,
+    breakout_level      = EXCLUDED.breakout_level
+"""
+
+_UPSERT_TREND_DAILY = """
+INSERT INTO trend_daily (
+    symbol, date, window_label, far_bars, near_bars, slope, r2, method
+)
+VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
+ON CONFLICT (symbol, date, window_label) DO UPDATE SET
+    far_bars  = EXCLUDED.far_bars,
+    near_bars = EXCLUDED.near_bars,
+    slope     = EXCLUDED.slope,
+    r2        = EXCLUDED.r2,
+    method    = EXCLUDED.method
 """
 
 _UPSERT_SR_DAILY = """
@@ -52,7 +107,10 @@ INSERT INTO indicators_daily (
     trend_slope_20_40d, trend_r2_20_40d,
     trend_slope_40_60d, trend_r2_40_60d
 )
-VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+VALUES (
+    %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s,
+    %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s
+)
 ON CONFLICT (symbol, date) DO UPDATE SET
     nearest_support     = EXCLUDED.nearest_support,
     nearest_resistance  = EXCLUDED.nearest_resistance,
@@ -147,6 +205,98 @@ ORDER BY date DESC
 LIMIT 1
 """
 
+_FETCH_LATEST_INDICATOR_DATE = """
+SELECT COALESCE(
+    (SELECT MAX(date) FROM support_resistance_daily),
+    (SELECT MAX(date) FROM indicators_daily)
+)
+"""
+
+_FETCH_INDICATOR_SNAPSHOT_BY_DATE = f"""
+WITH trend_pivot AS (
+    SELECT symbol, date,
+{_TREND_PIVOT_COLS}
+    FROM trend_daily
+    GROUP BY symbol, date
+)
+SELECT sr.symbol, sr.date,
+       sr.nearest_support, sr.nearest_resistance,
+       sr.dist_support_pct, sr.dist_support_atr,
+       sr.dist_resistance_pct, sr.dist_resistance_atr,
+       sr.atr_14, sr.sr_status,
+       sr.breakout_5d, sr.breakout_level,
+       tp.trend_slope_5d, tp.trend_r2_5d,
+       tp.trend_slope_10d, tp.trend_r2_10d,
+       tp.trend_slope_20d, tp.trend_r2_20d,
+       tp.trend_slope_40d, tp.trend_r2_40d,
+       tp.trend_slope_60d, tp.trend_r2_60d,
+       tp.trend_slope_11_20d, tp.trend_r2_11_20d,
+       tp.trend_slope_20_40d, tp.trend_r2_20_40d,
+       tp.trend_slope_40_60d, tp.trend_r2_40_60d
+FROM support_resistance_daily sr
+LEFT JOIN trend_pivot tp
+  ON sr.symbol = tp.symbol AND sr.date = tp.date
+WHERE sr.date = %s
+ORDER BY sr.symbol
+"""
+
+_FETCH_INDICATOR_SNAPSHOT_FOR_SYMBOL = f"""
+WITH trend_pivot AS (
+    SELECT symbol, date,
+{_TREND_PIVOT_COLS}
+    FROM trend_daily
+    GROUP BY symbol, date
+)
+SELECT sr.symbol, sr.date,
+       sr.nearest_support, sr.nearest_resistance,
+       sr.dist_support_pct, sr.dist_support_atr,
+       sr.dist_resistance_pct, sr.dist_resistance_atr,
+       sr.atr_14, sr.sr_status,
+       sr.breakout_5d, sr.breakout_level,
+       tp.trend_slope_5d, tp.trend_r2_5d,
+       tp.trend_slope_10d, tp.trend_r2_10d,
+       tp.trend_slope_20d, tp.trend_r2_20d,
+       tp.trend_slope_40d, tp.trend_r2_40d,
+       tp.trend_slope_60d, tp.trend_r2_60d,
+       tp.trend_slope_11_20d, tp.trend_r2_11_20d,
+       tp.trend_slope_20_40d, tp.trend_r2_20_40d,
+       tp.trend_slope_40_60d, tp.trend_r2_40_60d
+FROM support_resistance_daily sr
+LEFT JOIN trend_pivot tp
+  ON sr.symbol = tp.symbol AND sr.date = tp.date
+WHERE sr.symbol = %s AND sr.date BETWEEN %s AND %s
+ORDER BY sr.date DESC
+"""
+
+_FETCH_INDICATOR_SNAPSHOT_LATEST_SYMBOL = f"""
+WITH trend_pivot AS (
+    SELECT symbol, date,
+{_TREND_PIVOT_COLS}
+    FROM trend_daily
+    GROUP BY symbol, date
+)
+SELECT sr.symbol, sr.date,
+       sr.nearest_support, sr.nearest_resistance,
+       sr.dist_support_pct, sr.dist_support_atr,
+       sr.dist_resistance_pct, sr.dist_resistance_atr,
+       sr.atr_14, sr.sr_status,
+       sr.breakout_5d, sr.breakout_level,
+       tp.trend_slope_5d, tp.trend_r2_5d,
+       tp.trend_slope_10d, tp.trend_r2_10d,
+       tp.trend_slope_20d, tp.trend_r2_20d,
+       tp.trend_slope_40d, tp.trend_r2_40d,
+       tp.trend_slope_60d, tp.trend_r2_60d,
+       tp.trend_slope_11_20d, tp.trend_r2_11_20d,
+       tp.trend_slope_20_40d, tp.trend_r2_20_40d,
+       tp.trend_slope_40_60d, tp.trend_r2_40_60d
+FROM support_resistance_daily sr
+LEFT JOIN trend_pivot tp
+  ON sr.symbol = tp.symbol AND sr.date = tp.date
+WHERE sr.symbol = %s
+ORDER BY sr.date DESC
+LIMIT 1
+"""
+
 
 def fetch_ohlcv(symbol: str, source: str = "") -> pd.DataFrame:
     with get_source_conn() as conn:
@@ -156,6 +306,58 @@ def fetch_ohlcv(symbol: str, source: str = "") -> pd.DataFrame:
     df = pd.DataFrame(rows, columns=["date", "open", "high", "low", "close", "volume"])
     df["date"] = pd.to_datetime(df["date"])
     return df.set_index("date").sort_index()
+
+
+def _table_exists(conn, table_name: str) -> bool:
+    row = conn.execute("SELECT to_regclass(%s)", (f"public.{table_name}",)).fetchone()
+    return bool(row and row[0] is not None)
+
+
+def _indicator_tables_exist(conn) -> bool:
+    return _table_exists(conn, "support_resistance_daily") and _table_exists(conn, "trend_daily")
+
+
+def upsert_support_resistance_daily(row: dict[str, Any]) -> None:
+    with get_conn() as conn:
+        conn.execute(
+            _UPSERT_SUPPORT_RESISTANCE_DAILY,
+            (
+                row["symbol"],
+                row["date"],
+                row.get("nearest_support"),
+                row.get("nearest_resistance"),
+                row.get("dist_support_pct"),
+                row.get("dist_support_atr"),
+                row.get("dist_resistance_pct"),
+                row.get("dist_resistance_atr"),
+                row.get("atr_14"),
+                row.get("sr_status"),
+                row.get("breakout_5d"),
+                row.get("breakout_level"),
+            ),
+        )
+        conn.commit()
+
+
+def upsert_trend_daily(rows: list[dict[str, Any]]) -> None:
+    if not rows:
+        return
+    with get_conn() as conn:
+        for row in rows:
+            conn.execute(
+                _UPSERT_TREND_DAILY,
+                (
+                    row["symbol"],
+                    row["date"],
+                    row["window_label"],
+                    row["far_bars"],
+                    row["near_bars"],
+                    row.get("slope"),
+                    row.get("r2"),
+                    row.get("method", "linear_regression"),
+                ),
+            )
+        conn.commit()
 
 
 def upsert_indicators_daily(row: dict[str, Any]) -> None:
@@ -198,13 +400,21 @@ def upsert_indicators_daily(row: dict[str, Any]) -> None:
 
 def fetch_latest_indicators_daily_date() -> date | None:
     with get_conn() as conn:
-        row = conn.execute(_FETCH_LATEST_SR_DATE).fetchone()
+        if _indicator_tables_exist(conn):
+            row = conn.execute(_FETCH_LATEST_INDICATOR_DATE).fetchone()
+        else:
+            row = conn.execute(_FETCH_LATEST_SR_DATE).fetchone()
     return row[0] if row and row[0] is not None else None
 
 
 def fetch_indicators_daily_by_date(target_date: date) -> pd.DataFrame:
     with get_conn() as conn:
-        rows = conn.execute(_FETCH_SR_DAILY_BY_DATE, (target_date,)).fetchall()
+        if _indicator_tables_exist(conn):
+            rows = conn.execute(_FETCH_INDICATOR_SNAPSHOT_BY_DATE, (target_date,)).fetchall()
+        else:
+            rows = []
+        if not rows:
+            rows = conn.execute(_FETCH_SR_DAILY_BY_DATE, (target_date,)).fetchall()
     if not rows:
         return pd.DataFrame(columns=_INDICATORS_DAILY_COLS)
     return pd.DataFrame(rows, columns=_INDICATORS_DAILY_COLS)
@@ -213,7 +423,15 @@ def fetch_indicators_daily_by_date(target_date: date) -> pd.DataFrame:
 
 def fetch_indicators_daily_for_symbol(symbol: str, start: date, end: date) -> pd.DataFrame:
     with get_conn() as conn:
-        rows = conn.execute(_FETCH_SR_DAILY_FOR_SYMBOL, (symbol, start, end)).fetchall()
+        if _indicator_tables_exist(conn):
+            rows = conn.execute(
+                _FETCH_INDICATOR_SNAPSHOT_FOR_SYMBOL,
+                (symbol, start, end),
+            ).fetchall()
+        else:
+            rows = []
+        if not rows:
+            rows = conn.execute(_FETCH_SR_DAILY_FOR_SYMBOL, (symbol, start, end)).fetchall()
     if not rows:
         return pd.DataFrame(columns=_INDICATORS_DAILY_COLS)
     df = pd.DataFrame(rows, columns=_INDICATORS_DAILY_COLS)
@@ -223,7 +441,12 @@ def fetch_indicators_daily_for_symbol(symbol: str, start: date, end: date) -> pd
 
 def fetch_latest_indicators_daily_for_symbol(symbol: str) -> dict[str, Any] | None:
     with get_conn() as conn:
-        row = conn.execute(_FETCH_SR_DAILY_LATEST_SYMBOL, (symbol,)).fetchone()
+        if _indicator_tables_exist(conn):
+            row = conn.execute(_FETCH_INDICATOR_SNAPSHOT_LATEST_SYMBOL, (symbol,)).fetchone()
+        else:
+            row = None
+        if not row:
+            row = conn.execute(_FETCH_SR_DAILY_LATEST_SYMBOL, (symbol,)).fetchone()
     if not row:
         return None
     return dict(zip(_INDICATORS_DAILY_COLS, row))
@@ -246,8 +469,8 @@ def fetch_indicators_daily_symbols() -> list[str]:
 
 def fetch_indicators_daily_filtered(
     symbols: list[str] | None,
-    date_from: "date | None",
-    date_to: "date | None",
+    date_from: date | None,
+    date_to: date | None,
     limit: int = 200,
     offset: int = 0,
 ) -> tuple[pd.DataFrame, int]:
@@ -419,7 +642,7 @@ def fetch_all_universe_constituents() -> dict[str, list[str]]:
 
 def fetch_constituent_turnover_batch(
     stock_tickers: list[str],
-    start_date: "date",
+    start_date: date,
     source: str = "tiingo",
 ) -> pd.DataFrame:
     """
@@ -516,13 +739,13 @@ def upsert_sector_heat_daily(row: dict[str, Any]) -> None:
         conn.commit()
 
 
-def fetch_latest_sector_heat_date() -> "date | None":
+def fetch_latest_sector_heat_date() -> date | None:
     with get_conn() as conn:
         row = conn.execute(_FETCH_LATEST_SECTOR_HEAT_DATE).fetchone()
     return row[0] if row and row[0] is not None else None
 
 
-def fetch_sector_heat_snapshot(target_date: "date") -> pd.DataFrame:
+def fetch_sector_heat_snapshot(target_date: date) -> pd.DataFrame:
     with get_conn() as conn:
         rows = conn.execute(_FETCH_SECTOR_HEAT_SNAPSHOT, (target_date,)).fetchall()
     if not rows:
@@ -530,9 +753,7 @@ def fetch_sector_heat_snapshot(target_date: "date") -> pd.DataFrame:
     return pd.DataFrame(rows, columns=_SECTOR_HEAT_COLS)
 
 
-def fetch_sector_heat_history(
-    universe_ticker: str, start: "date", end: "date"
-) -> pd.DataFrame:
+def fetch_sector_heat_history(universe_ticker: str, start: date, end: date) -> pd.DataFrame:
     with get_conn() as conn:
         rows = conn.execute(_FETCH_SECTOR_HEAT_HISTORY, (universe_ticker, start, end)).fetchall()
     if not rows:
@@ -542,7 +763,7 @@ def fetch_sector_heat_history(
     return df
 
 
-def fetch_latest_sector_heat_for_ticker(universe_ticker: str) -> "dict[str, Any] | None":
+def fetch_latest_sector_heat_for_ticker(universe_ticker: str) -> dict[str, Any] | None:
     with get_conn() as conn:
         row = conn.execute(_FETCH_LATEST_SECTOR_HEAT_FOR_TICKER, (universe_ticker,)).fetchone()
     if not row:

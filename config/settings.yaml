@@ -1,20 +1,47 @@
+indicators:
+  support_resistance:
+    swing_order: 3
+    cluster_pct: 1.5
+    min_touches: 2
+    min_span_days: 10
+    max_levels: 10
+    max_dist_pct: 20
+    extreme_order: 60
+    extreme_pct: 5.0
+    lookback_window: 500
+    atr_period: 14
+    watch_atr_mult: 1.5
+    warn_atr_mult: 0.5
+    breakout_window: 5
+
+  trend:
+    windows:
+      - {label: 5d, far_bars: 5, near_bars: 0}
+      - {label: 10d, far_bars: 10, near_bars: 0}
+      - {label: 20d, far_bars: 20, near_bars: 0}
+      - {label: 40d, far_bars: 40, near_bars: 0}
+      - {label: 60d, far_bars: 60, near_bars: 0}
+      - {label: 11_20d, far_bars: 20, near_bars: 10}
+      - {label: 20_40d, far_bars: 40, near_bars: 20}
+      - {label: 40_60d, far_bars: 60, near_bars: 40}
+
+# Backward-compatible alias for older code paths and saved prefs.
 strategies:
   support_resistance:
-    swing_order: 3          # 摆动点检测：左右各 N 根K线为极值
-    cluster_pct: 1.5        # 聚类阈值：价格差 ≤ 1.5% 视为同一水平区
-    min_touches: 2          # 最少触及次数
-    min_span_days: 10       # 触及时间跨度至少 10 天（过滤密集震荡）
-    max_levels: 10          # 最多输出几条关键位
-    max_dist_pct: 20        # 距当前价格超过此百分比的关键位不参与计算
-    extreme_order: 60       # 极端单点：左右各 N 根K线内是最高/最低
-    extreme_pct: 5.0        # 极端单点：偏离周围均价 >= N% 才算极端
-    lookback_window: 500    # 用于检测的历史K线根数（500根≈2年交易日）
-    atr_period: 14          # ATR 计算周期（Wilder RMA）
-    watch_atr_mult: 1.5     # 距离 ≤ 1.5×ATR → 关注（watch）
-    warn_atr_mult: 0.5      # 距离 ≤ 0.5×ATR → 警告（warning）
-    breakout_window: 5      # 向前扫描 N 根K线检测是否有突破
-    trend_window: 5         # 线性回归窗口（K线根数）
+    swing_order: 3
+    cluster_pct: 1.5
+    min_touches: 2
+    min_span_days: 10
+    max_levels: 10
+    max_dist_pct: 20
+    extreme_order: 60
+    extreme_pct: 5.0
+    lookback_window: 500
+    atr_period: 14
+    watch_atr_mult: 1.5
+    warn_atr_mult: 0.5
+    breakout_window: 5
 
 pipeline:
-  min_bars: 40               # 至少需要的历史交易日数
-  source: tiingo              # 数据源标识
+  min_bars: 40
+  source: tiingo

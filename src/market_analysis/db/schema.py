@@ -47,6 +47,53 @@ CREATE INDEX IF NOT EXISTS indicators_daily_symbol_idx ON indicators_daily (symb
 CREATE INDEX IF NOT EXISTS indicators_daily_status_idx ON indicators_daily (sr_status);
 """
 
+_CREATE_SUPPORT_RESISTANCE_DAILY = """
+CREATE TABLE IF NOT EXISTS support_resistance_daily (
+    symbol                TEXT    NOT NULL,
+    date                  DATE    NOT NULL,
+    nearest_support       FLOAT,
+    nearest_resistance    FLOAT,
+    dist_support_pct      FLOAT,
+    dist_support_atr      FLOAT,
+    dist_resistance_pct   FLOAT,
+    dist_resistance_atr   FLOAT,
+    atr_14                FLOAT,
+    sr_status             TEXT,
+    breakout_5d           TEXT,
+    breakout_level        FLOAT,
+    PRIMARY KEY (symbol, date)
+);
+"""
+
+_CREATE_SUPPORT_RESISTANCE_DAILY_IDX = """
+CREATE INDEX IF NOT EXISTS support_resistance_daily_date_idx
+    ON support_resistance_daily (date DESC);
+CREATE INDEX IF NOT EXISTS support_resistance_daily_symbol_idx
+    ON support_resistance_daily (symbol);
+CREATE INDEX IF NOT EXISTS support_resistance_daily_status_idx
+    ON support_resistance_daily (sr_status);
+"""
+
+
+_CREATE_TREND_DAILY = """
+CREATE TABLE IF NOT EXISTS trend_daily (
+    symbol        TEXT NOT NULL,
+    date          DATE NOT NULL,
+    window_label  TEXT NOT NULL,
+    far_bars      INT  NOT NULL,
+    near_bars     INT  NOT NULL DEFAULT 0,
+    slope         FLOAT,
+    r2            FLOAT,
+    method        TEXT NOT NULL DEFAULT 'linear_regression',
+    PRIMARY KEY (symbol, date, window_label)
+);
+"""
+
+_CREATE_TREND_DAILY_IDX = """
+CREATE INDEX IF NOT EXISTS trend_daily_date_idx   ON trend_daily (date DESC);
+CREATE INDEX IF NOT EXISTS trend_daily_symbol_idx ON trend_daily (symbol);
+"""
+
 
 _CREATE_SECTOR_HEAT_DAILY = """
 CREATE TABLE IF NOT EXISTS sector_heat_daily (
@@ -81,21 +128,23 @@ ALTER TABLE indicators_daily ADD COLUMN IF NOT EXISTS trend_r2_40_60d    FLOAT;
 """
 
 
+def _execute_statements(conn, statements: str) -> None:
+    for stmt in statements.strip().split(";"):
+        stmt = stmt.strip()
+        if stmt:
+            conn.execute(stmt)
+
+
 def init_schema() -> None:
     with get_conn() as conn:
         conn.execute(_CREATE_INDICATORS_DAILY)
-        for stmt in _ALTER_INDICATORS_DAILY_ADD_TREND_40_60.strip().splitlines():
-            stmt = stmt.strip()
-            if stmt:
-                conn.execute(stmt)
-        for stmt in _CREATE_INDICATORS_DAILY_IDX.strip().splitlines():
-            stmt = stmt.strip()
-            if stmt:
-                conn.execute(stmt)
+        _execute_statements(conn, _ALTER_INDICATORS_DAILY_ADD_TREND_40_60)
+        _execute_statements(conn, _CREATE_INDICATORS_DAILY_IDX)
+        conn.execute(_CREATE_SUPPORT_RESISTANCE_DAILY)
+        _execute_statements(conn, _CREATE_SUPPORT_RESISTANCE_DAILY_IDX)
+        conn.execute(_CREATE_TREND_DAILY)
+        _execute_statements(conn, _CREATE_TREND_DAILY_IDX)
         conn.execute(_CREATE_SECTOR_HEAT_DAILY)
-        for stmt in _CREATE_SECTOR_HEAT_DAILY_IDX.strip().splitlines():
-            stmt = stmt.strip()
-            if stmt:
-                conn.execute(stmt)
+        _execute_statements(conn, _CREATE_SECTOR_HEAT_DAILY_IDX)
         conn.commit()
     log.info("db.schema.initialized")

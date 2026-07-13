@@ -4,6 +4,25 @@
 
 ---
 
+## Current Indicator Storage
+
+Daily symbol-level analysis is now split by responsibility:
+
+- `support_resistance_daily` stores SR snapshots.
+- `trend_daily` stores one row per symbol/date/trend window.
+- `indicators_daily` is retained as a legacy compatibility table.
+- `sector_heat_daily` remains unchanged and independent from symbol indicators.
+
+Calculation modules now live under `src/market_analysis/indicators/`:
+
+- `support_resistance.py` computes SR levels, SR status, ATR distance, and breakouts.
+- `trend.py` computes linear-regression trend windows.
+
+Dashboard query helpers still return a wide, dashboard-compatible snapshot by joining/pivoting
+the new tables internally.
+
+---
+
 ## 目录
 
 - [项目定位](#项目定位)
@@ -51,10 +70,12 @@ market_analysis/
 │   │   ├── __init__.py               # STRATEGIES 注册表
 │   │   ├── support_resistance.py     # 当前唯一活跃策略
 │   │   └── archive/                  # 已归档的旧策略（不参与运行）
-│   ├── analytics/
-│   │   └── sector_heat.py            # 板块热度计算（compute_sector_heat / _history）
+│   ├── indicators/
+│   │   ├── support_resistance.py     # 支撑阻力指标计算
+│   │   ├── trend.py                  # 趋势指标计算
+│   │   └── sector_heat.py            # 板块热度指标计算
 │   ├── pipeline/
-│   │   ├── run_strategies.py         # 所有策略批量执行入口
+│   │   ├── run_indicators.py         # 每日指标批量执行入口
 │   │   └── run_sector_heat.py        # 板块热度批量执行入口
 │   └── cli.py                        # Typer CLI
 └── tests/
@@ -229,7 +250,7 @@ CREATE TABLE IF NOT EXISTS sector_heat_daily (
 
 ```
 05:00  market-data update                   # 拉取行情，写入 market_data DB
-05:30  market-analysis run-strategies       # 所有策略分析，写入 indicators_daily
+05:30  market-analysis run-indicators       # 每日指标分析，写入指标快照表
 05:35  market-analysis run-sector-heat      # 板块热度，写入 sector_heat_daily
 ```
 
@@ -237,17 +258,17 @@ CREATE TABLE IF NOT EXISTS sector_heat_daily (
 
 ```mermaid
 flowchart TD
-    CMD_SR["$ market-analysis run-strategies"]
+    CMD_SR["$ market-analysis run-indicators"]
     CMD_SH["$ market-analysis run-sector-heat"]
 
-    RP_SR["pipeline/run_strategies.py\nrun_pipeline()\n1. OPTIONS_ACTIVE 成分股\n2. universe 表 ETF"]
+    RP_SR["pipeline/run_indicators.py\nrun_pipeline()\n1. OPTIONS_ACTIVE 成分股\n2. universe 表 ETF"]
     RP_SH["pipeline/run_sector_heat.py\nrun_sector_heat_pipeline()\n取所有 universe_ticker 成分股"]
 
     FO["db/queries.py\nfetch_ohlcv()\nSELECT FROM daily_bars_split_adjusted"]
     FT["db/queries.py\nfetch_constituent_turnover_batch()\nSELECT close*volume 宽表"]
 
     SR["strategies/support_resistance.py\n摆动点聚类法\n趋势斜率 5/10/20/40/60d\n-> indicators_daily 一行"]
-    SH["analytics/sector_heat.py\ncompute_sector_heat()\n-> sector_heat_daily 一行"]
+    SH["indicators/sector_heat.py\ncompute_sector_heat()\n-> sector_heat_daily 一行"]
 
     DST_SR[("market_analysis DB\nindicators_daily")]
     DST_SH[("market_analysis DB\nsector_heat_daily")]
@@ -301,8 +322,8 @@ market-analysis init-db
 ### 4. 运行分析
 
 ```powershell
-# 所有策略分析（OPTIONS_ACTIVE 成分股 + ETF -> indicators_daily）
-market-analysis run-strategies
+# 每日指标分析（OPTIONS_ACTIVE 成分股 + ETF -> 指标快照表）
+market-analysis run-indicators
 
 # 板块热度（所有 universe_ticker -> sector_heat_daily）
 market-analysis run-sector-heat
@@ -346,7 +367,7 @@ streamlit run dashboard.py --server.port 8504
   - 趋势斜率列：5d / 10d / 20d / 40d / 60d 及对应 R²
 - 数据新鲜度提示：若当前日期数据不完整，显示其余日期的 ETF / 个股分布
 - 点击任意行在新标签页打开该 symbol 的详情页
-- 侧边栏 `▶ 运行策略分析` 按钮触发 `market-analysis run-strategies` 重新计算
+- 侧边栏 `▶ 运行指标分析` 按钮触发 `market-analysis run-indicators` 重新计算
 
 ### SR 详情页（`?symbol=XXX`）
 
@@ -403,7 +424,7 @@ sr:
   trend_window: 5
 ```
 
-Dashboard 侧边栏修改参数后点击"保存"会写入 `user_prefs.yaml`，再点击"运行策略分析"重跑写库。
+Dashboard 侧边栏修改参数后点击"保存"会写入 `user_prefs.yaml`，再点击"运行指标分析"重跑写库。
 
 ---
 
@@ -443,10 +464,10 @@ pytest tests/
 ```mermaid
 flowchart TD
     CLI["cli.py"]
-    PIPE_SR["pipeline/run_strategies.py"]
+    PIPE_SR["pipeline/run_indicators.py"]
     PIPE_SH["pipeline/run_sector_heat.py"]
     STRAT["strategies/support_resistance.py"]
-    ANALYTICS["analytics/sector_heat.py"]
+    ANALYTICS["indicators/sector_heat.py"]
     DB["db/\n__init__.py · schema.py · queries.py"]
     DASH["dashboard.py"]
     PG_MA[("market_analysis DB\nindicators_daily\nsector_heat_daily")]
