@@ -1,6 +1,6 @@
 # Market Analysis — 行情指标分析系统
 
-基于 Python 的行情指标分析系统。每日自动读取股票行情数据，计算支撑阻力位、趋势和板块资金热度指标，结果持久化存储并通过 Streamlit Dashboard 可视化展示。
+基于 Python 的行情指标分析系统。每日自动读取股票行情数据，计算支撑阻力位、趋势和板块资金热度指标，结果持久化存储；展示和进一步分析由同级 `investment_dashboard` 项目负责。
 
 ---
 
@@ -10,7 +10,6 @@ Daily symbol-level analysis is now split by responsibility:
 
 - `support_resistance_daily` stores SR snapshots.
 - `trend_daily` stores one row per symbol/date/trend window.
-- `indicators_daily` is retained as a legacy compatibility table.
 - `sector_heat_daily` remains unchanged and independent from symbol indicators.
 
 Calculation modules now live under `src/market_analysis/indicators/`:
@@ -18,8 +17,9 @@ Calculation modules now live under `src/market_analysis/indicators/`:
 - `support_resistance.py` computes SR levels, SR status, ATR distance, and breakouts.
 - `trend.py` computes linear-regression trend windows.
 
-Dashboard query helpers still return a wide, dashboard-compatible snapshot by joining/pivoting
-the new tables internally.
+Snapshot query helpers return a wide, downstream-compatible view by joining/pivoting
+`support_resistance_daily` and `trend_daily` internally. Display and further analysis are
+handled by the separate `investment_dashboard` project.
 
 ---
 
@@ -55,7 +55,7 @@ the new tables internally.
 
 ```
 market_analysis/
-├── dashboard.py                      # Streamlit 可视化入口
+├── dashboard.py                      # 历史展示入口；当前仅保留弃用提示
 ├── config/
 │   ├── settings.yaml                 # 指标参数默认值
 │   └── user_prefs.yaml               # 用户参数覆盖（可选，自动生成）
@@ -64,7 +64,7 @@ market_analysis/
 │   ├── config.py                     # 配置入口（pydantic-settings）
 │   ├── db/
 │   │   ├── __init__.py               # 双连接池（market_analysis + market_data）
-│   │   ├── schema.py                 # 建表（indicators_daily + sector_heat_daily，幂等）
+│   │   ├── schema.py                 # 建表（指标快照表 + sector_heat_daily，幂等）
 │   │   └── queries.py                # 所有读写函数
 │   ├── indicators/
 │   │   ├── support_resistance.py     # 支撑阻力指标计算
@@ -91,7 +91,7 @@ market_analysis/
 | 配置管理 | pydantic-settings + YAML + .env |
 | CLI | Typer |
 | 日志 | structlog |
-| Dashboard | Streamlit + Plotly |
+| 展示 | 由下游 `investment_dashboard` 项目负责 |
 | 测试 | pytest |
 | Lint | ruff |
 | 指标计算 | scipy（摆动点检测）+ statsmodels |
@@ -109,16 +109,17 @@ PostgreSQL (localhost:5432)
 │   ├── universe_constituents       # universe_ticker -> stock_ticker 映射
 │   └── universe                    # ETF 列表（ticker, sub_category 等）
 └── market_analysis    <- 读写
-    ├── indicators_daily            # SR 快照（每 symbol 每日一行）
+    ├── support_resistance_daily    # 支撑/阻力快照（每 symbol 每日一行）
+    ├── trend_daily                 # 趋势快照（每 symbol/date/window_label 一行）
     └── sector_heat_daily           # 板块热度快照（每 universe_ticker 每日一行）
 ```
 
-### indicators_daily（SR 快照宽表）
+### support_resistance_daily（支撑/阻力快照）
 
 每个 symbol 每个交易日一行：
 
 ```sql
-CREATE TABLE IF NOT EXISTS indicators_daily (
+CREATE TABLE IF NOT EXISTS support_resistance_daily (
     symbol               TEXT  NOT NULL,
     date                 DATE  NOT NULL,
     nearest_support      FLOAT,          -- 最近支撑位中心价格
@@ -131,21 +132,29 @@ CREATE TABLE IF NOT EXISTS indicators_daily (
     sr_status            TEXT,           -- normal|watch|warning|at_support|at_resistance
     breakout_5d          TEXT,           -- break_up|break_down|NULL
     breakout_level       FLOAT,          -- 突破的 SR 中心价格
-    trend_slope_5d       FLOAT,          -- 归一化线性回归斜率（5日）
-    trend_r2_5d          FLOAT,          -- 线性回归 R²（5日）
-    trend_slope_10d      FLOAT,          -- 归一化线性回归斜率（10日）
-    trend_r2_10d         FLOAT,          -- 线性回归 R²（10日）
-    trend_slope_20d      FLOAT,          -- 归一化线性回归斜率（20日）
-    trend_r2_20d         FLOAT,          -- 线性回归 R²（20日）
-    trend_slope_40d      FLOAT,          -- 归一化线性回归斜率（40日）
-    trend_r2_40d         FLOAT,          -- 线性回归 R²（40日）
-    trend_slope_60d      FLOAT,          -- 归一化线性回归斜率（60日）
-    trend_r2_60d         FLOAT,          -- 线性回归 R²（60日）
     PRIMARY KEY (symbol, date)
 );
 ```
 
-趋势斜率（`trend_slope_Nd`）= 线性回归原始斜率 / 窗口首日收盘价，近似每 bar 的涨跌幅速率，不同价位的标的可直接比较。
+### trend_daily（趋势快照）
+
+每个 symbol/date/window_label 一行：
+
+```sql
+CREATE TABLE IF NOT EXISTS trend_daily (
+    symbol        TEXT NOT NULL,
+    date          DATE NOT NULL,
+    window_label  TEXT NOT NULL,
+    far_bars      INT  NOT NULL,
+    near_bars     INT  NOT NULL DEFAULT 0,
+    slope         FLOAT,
+    r2            FLOAT,
+    method        TEXT NOT NULL DEFAULT 'linear_regression',
+    PRIMARY KEY (symbol, date, window_label)
+);
+```
+
+趋势斜率（`trend_daily.slope`）= 线性回归原始斜率 / 窗口首日收盘价，近似每 bar 的涨跌幅速率，不同价位的标的可直接比较。
 
 ### sector_heat_daily（板块热度快照）
 
@@ -234,7 +243,7 @@ CREATE TABLE IF NOT EXISTS sector_heat_daily (
 3. 对每个 `universe_ticker` 调用 `compute_sector_heat()`，计算今日快照
 4. 结果 upsert 到 `sector_heat_daily`
 
-**详情页计算**（Dashboard 动态计算，不依赖 DB）：
+**详情页计算**（下游展示层动态计算，不依赖 DB）：
 
 - 拉取展示范围前额外 90 天的历史数据作为暖启动
 - 调用 `compute_sector_heat_history()` 计算完整滚动历史
@@ -336,69 +345,11 @@ market-analysis show
 market-analysis show --date 2026-06-14
 ```
 
-### 6. 启动 Dashboard
+### 6. 展示与分析
 
-**推荐（后台运行）：**
+本项目不再维护 Streamlit 展示入口。指标快照、K 线详情、板块热度展示和数据库浏览统一由同级 `investment_dashboard` 项目读取本项目输出表后提供。
 
-```powershell
-.\scripts\start_dashboard.ps1   # 启动
-.\scripts\stop_dashboard.ps1    # 停止
-```
-
-> 首次运行若提示执行策略限制：`Set-ExecutionPolicy -Scope CurrentUser RemoteSigned`
-
-**直接前台运行：**
-
-```powershell
-streamlit run dashboard.py --server.port 8504
-```
-
-访问：`http://localhost:8504`
-
----
-
-## Dashboard 功能说明
-
-### SR 概览页（默认页）
-
-- 顶部指标卡：扫描股票数、在 SR 位数量、警告数量、近 5 日突破数
-- 快照宽表按 ETF / 个股分组展示（数据来自 DB，非 yaml 配置），支持日期选择
-  - ETF 表格附带 `sub_category` 分类字段
-  - 趋势斜率列：5d / 10d / 20d / 40d / 60d 及对应 R²
-- 数据新鲜度提示：若当前日期数据不完整，显示其余日期的 ETF / 个股分布
-- 点击任意行在新标签页打开该 symbol 的详情页
-- 侧边栏 `▶ 运行指标分析` 按钮触发 `market-analysis run-indicators` 重新计算
-
-### SR 详情页（`?symbol=XXX`）
-
-- Plotly 交互式 K 线图
-- 支撑阻力区可视化：彩色阴影区 + 中心价格虚线 + 摆动点标记
-- 多指标子图（共享 x 轴，同步十字线）：SR 距离、ATR、趋势斜率等
-- 最新 SR 快照指标卡（支撑/阻力价、ATR、突破、5/10/20/40/60d 斜率）
-- 历史指标走势表（90 日）
-- 侧边栏可实时调整 SR 参数并保存到 `user_prefs.yaml`
-
-### 板块热度概览页
-
-- 所有 universe_ticker 的热度快照表（读取 `sector_heat_daily`）
-- 热度倍数和 z-score 用颜色标注冷热
-- 点击板块在新标签页打开热度详情页
-- 侧边栏可触发 `market-analysis run-sector-heat`
-
-### 板块热度详情页（`?sector=XXX`）
-
-- K 线图（如有 ETF 行情数据）
-- 成交额 + MA20 柱状图
-- 热度倍数（ratio）折线图 + 1x/2x/3x 参考线
-- Z-score 折线图 + ±2σ 参考线
-- 所有子图共享 x 轴，鼠标悬浮显示同步十字线
-- 每个子图可通过侧边栏开关单独关闭
-
-### 数据库查看器
-
-- 在 `market_analysis` / `market_data` 两库间切换
-- 自动发现所有表，显示行数和字段列表
-- 分页浏览表数据
+本项目保留 `dashboard.py` 作为弃用提示，误运行时会提示使用 `investment_dashboard`。
 
 ---
 
@@ -424,7 +375,7 @@ sr:
   trend_window: 5
 ```
 
-Dashboard 侧边栏修改参数后点击"保存"会写入 `user_prefs.yaml`，再点击"运行指标分析"重跑写库。
+修改参数后运行 `market-analysis run-indicators` 或 `market-analysis run-sector-heat` 重新写入快照表。
 
 ---
 
@@ -463,8 +414,8 @@ flowchart TD
     TR["indicators/trend.py"]
     HEAT["indicators/sector_heat.py"]
     DB["db/\n__init__.py · schema.py · queries.py"]
-    DASH["dashboard.py"]
-    PG_MA[("market_analysis DB\nindicators_daily\nsector_heat_daily")]
+    DOWNSTREAM["investment_dashboard"]
+    PG_MA[("market_analysis DB\nsupport_resistance_daily\ntrend_daily\nsector_heat_daily")]
     PG_MD[("market_data DB\ndaily_bars_split_adjusted\nuniverse_constituents\nuniverse")]
 
     CLI --> PIPE_SR
@@ -474,9 +425,7 @@ flowchart TD
     PIPE_SR --> DB
     PIPE_SH --> HEAT
     PIPE_SH --> DB
-    DASH --> DB
-    DASH --> SR
-    DASH --> HEAT
+    DOWNSTREAM -->|"读"| PG_MA
     DB -->|"写"| PG_MA
     DB -->|"读"| PG_MD
     SR -.->|"禁止 import"| DB

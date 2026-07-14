@@ -84,59 +84,12 @@ market_analysis/
 
 `init_schema()` 当前维护以下表：
 
-- `indicators_daily`：历史兼容宽表，每 `symbol/date` 一行；当前仍会建表和补字段，但主写入路径已拆分到新表。
 - `support_resistance_daily`：支撑/阻力快照，每 `symbol/date` 一行。
 - `trend_daily`：趋势快照，每 `symbol/date/window_label` 一行。
 - `sector_heat_daily`：板块热度快照，每 `universe_ticker/date` 一行。
 
-`queries.py` 中的兼容查询函数会优先从 `support_resistance_daily` + `trend_daily` 拼出宽表结果；若新表没有数据，再回退到 `indicators_daily`。
+`queries.py` 中的快照查询函数从 `support_resistance_daily` + `trend_daily` 拼出宽表结果，不再回退到历史兼容表。
 
-### indicators_daily（历史兼容宽表）
-
-```sql
-CREATE TABLE IF NOT EXISTS indicators_daily (
-    symbol                TEXT    NOT NULL,
-    date                  DATE    NOT NULL,
-    nearest_support       FLOAT,
-    nearest_resistance    FLOAT,
-    dist_support_pct      FLOAT,
-    dist_support_atr      FLOAT,
-    dist_resistance_pct   FLOAT,
-    dist_resistance_atr   FLOAT,
-    atr_14                FLOAT,
-    sr_status             TEXT,
-    breakout_5d           TEXT,
-    breakout_level        FLOAT,
-    trend_slope_5d        FLOAT,
-    trend_r2_5d           FLOAT,
-    trend_slope_10d       FLOAT,
-    trend_r2_10d          FLOAT,
-    trend_slope_20d       FLOAT,
-    trend_r2_20d          FLOAT,
-    trend_slope_40d       FLOAT,
-    trend_r2_40d          FLOAT,
-    trend_slope_60d       FLOAT,
-    trend_r2_60d          FLOAT,
-    trend_slope_11_20d    FLOAT,
-    trend_r2_11_20d       FLOAT,
-    trend_slope_20_40d    FLOAT,
-    trend_r2_20_40d       FLOAT,
-    trend_slope_40_60d    FLOAT,
-    trend_r2_40_60d       FLOAT,
-    PRIMARY KEY (symbol, date)
-);
-```
-
-索引：
-
-```sql
-CREATE INDEX IF NOT EXISTS indicators_daily_date_idx
-    ON indicators_daily (date DESC);
-CREATE INDEX IF NOT EXISTS indicators_daily_symbol_idx
-    ON indicators_daily (symbol);
-CREATE INDEX IF NOT EXISTS indicators_daily_status_idx
-    ON indicators_daily (sr_status);
-```
 
 ### support_resistance_daily
 
@@ -319,7 +272,7 @@ cron 建议顺序：
 `investment_dashboard` 是统一展示与分析项目，负责读取本项目写入的表或查询结果。本项目修改以下内容时，最终回复必须说明 `investment_dashboard` 影响：
 
 - 数据库表、字段、索引、主键、唯一约束。
-- `support_resistance_daily`、`trend_daily`、`indicators_daily`、`sector_heat_daily` 的字段含义。
+- `support_resistance_daily`、`trend_daily`、`sector_heat_daily` 的字段含义。
 - `queries.py` 中供下游使用的返回列、列名、排序、空值语义。
 - CLI 命令名称或输出格式。
 - 下游可能依赖的配置键、参数默认值或数据语义。

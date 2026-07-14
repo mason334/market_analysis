@@ -161,7 +161,7 @@ ORDER BY date
 # 初始化数据库表
 market-analysis init-db
 
-# SR 分析：从 universe_constituents(OPTIONS_ACTIVE) 取 ticker，写入 indicators_daily
+# 指标分析：从 universe_constituents(OPTIONS_ACTIVE) 取 ticker，写入 support_resistance_daily + trend_daily
 market-analysis run-sr
 
 # 板块热度分析：从 universe_constituents 取所有板块，写入 sector_heat_daily

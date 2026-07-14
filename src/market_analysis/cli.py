@@ -70,13 +70,13 @@ def show(
         help="查看快照的日期（YYYY-MM-DD）",
     ),
 ) -> None:
-    """查看指定日期的 indicators_daily 快照。"""
+    """查看指定日期的指标快照。"""
     import pandas as pd
 
-    from market_analysis.db.queries import fetch_indicators_daily_by_date
+    from market_analysis.db.queries import fetch_indicator_snapshot_by_date
 
     d = date.fromisoformat(target_date)
-    df: pd.DataFrame = fetch_indicators_daily_by_date(d)
+    df: pd.DataFrame = fetch_indicator_snapshot_by_date(d)
 
     if df.empty:
         typer.echo(f"No snapshot data found for {d}.")
