@@ -10,6 +10,8 @@ Daily symbol-level analysis is now split by responsibility:
 
 - `support_resistance_daily` stores SR snapshots.
 - `trend_daily` stores one row per symbol/date/trend window.
+- `trend_segmentation_daily` and `trend_segment_daily` store the separate adaptive
+  segmentation experiment summary and segment details.
 - `sector_heat_daily` remains unchanged and independent from symbol indicators.
 
 Calculation modules now live under `src/market_analysis/indicators/`:
@@ -110,7 +112,9 @@ PostgreSQL (localhost:5432)
 │   └── universe                    # ETF 列表（ticker, sub_category 等）
 └── market_analysis    <- 读写
     ├── support_resistance_daily    # 支撑/阻力快照（每 symbol 每日一行）
-    ├── trend_daily                 # 趋势快照（每 symbol/date/window_label 一行）
+    ├── trend_daily                 # 固定窗口趋势快照
+    ├── trend_segmentation_daily    # 自适应分段模型选择摘要
+    ├── trend_segment_daily         # 自适应趋势分段明细
     └── sector_heat_daily           # 板块热度快照（每 universe_ticker 每日一行）
 ```
 
@@ -169,6 +173,19 @@ CREATE TABLE IF NOT EXISTS trend_daily (
 固定趋势 v2 的基础值为 `log_slope_per_bar` 和 `linearity_r2`，并同时保存拟合/实际
 log return、日度实现波动率、波动率调整趋势、路径效率和斜率稳定性。数据库使用小数
 log 口径，不提前乘 100 或舍入；百分比展示由下游转换。
+
+### 自适应趋势分段实验
+
+阶段 B 使用 40/60 bar 长窗口，在 log price 上执行受限精确动态规划。算法比较
+1 至 `max_segments` 个分段的最小 RSS，并使用 BIC 选择分段数。每一段不少于
+`min_segment_bars`，因此拐点不需要落在固定窗口边界上。考虑到价格路径的随机游走特征，
+实验使用可配置的 `bic_penalty_multiplier`（默认 3.0）提高复杂度惩罚，并在汇总表中保存该参数。
+
+- `trend_segmentation_daily`：每个 `symbol/date/lookback_bars` 的模型选择摘要。
+- `trend_segment_daily`：每个自适应段的日期边界和段内趋势指标。
+- 方法：`piecewise_log_linear_dp_bic`。
+- 版本：`adaptive_trend_v1`。
+- 独立实验命令不会修改 `trend_daily`，也不会由 `run-indicators` 自动触发。
 
 ### sector_heat_daily（板块热度快照）
 
@@ -350,6 +367,9 @@ market-analysis run-indicators
 
 # 板块热度（所有 universe_ticker -> sector_heat_daily）
 market-analysis run-sector-heat
+
+# 自适应趋势分段实验（独立于固定窗口生产流程）
+market-analysis run-trend-segmentation-experiment
 ```
 
 ### 5. 查看 SR 快照

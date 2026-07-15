@@ -107,6 +107,75 @@ WHERE symbol = %s
   AND NOT (window_label = ANY(%s))
 """
 
+_UPSERT_TREND_SEGMENTATION_DAILY = """
+INSERT INTO trend_segmentation_daily (
+    symbol, date, lookback_bars, observation_count,
+    segment_count, change_point_count,
+    selected_rss, single_segment_rss, selected_bic, single_segment_bic,
+    bic_improvement, min_segment_bars, max_segments, bic_penalty_multiplier,
+    method, calculation_version
+)
+VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+ON CONFLICT (symbol, date, lookback_bars) DO UPDATE SET
+    observation_count   = EXCLUDED.observation_count,
+    segment_count       = EXCLUDED.segment_count,
+    change_point_count  = EXCLUDED.change_point_count,
+    selected_rss        = EXCLUDED.selected_rss,
+    single_segment_rss = EXCLUDED.single_segment_rss,
+    selected_bic        = EXCLUDED.selected_bic,
+    single_segment_bic  = EXCLUDED.single_segment_bic,
+    bic_improvement     = EXCLUDED.bic_improvement,
+    min_segment_bars    = EXCLUDED.min_segment_bars,
+    max_segments        = EXCLUDED.max_segments,
+    bic_penalty_multiplier = EXCLUDED.bic_penalty_multiplier,
+    method              = EXCLUDED.method,
+    calculation_version = EXCLUDED.calculation_version
+"""
+
+_UPSERT_TREND_SEGMENT_DAILY = """
+INSERT INTO trend_segment_daily (
+    symbol, date, lookback_bars, segment_index,
+    start_date, end_date, start_bar_index, end_bar_index, observation_count,
+    log_slope_per_bar, linearity_r2, fitted_log_return, actual_log_return,
+    realized_volatility_daily, vol_adjusted_trend, efficiency_ratio,
+    method, calculation_version
+)
+VALUES (
+    %s, %s, %s, %s, %s, %s, %s, %s, %s,
+    %s, %s, %s, %s, %s, %s, %s, %s, %s
+)
+ON CONFLICT (symbol, date, lookback_bars, segment_index) DO UPDATE SET
+    start_date                = EXCLUDED.start_date,
+    end_date                  = EXCLUDED.end_date,
+    start_bar_index           = EXCLUDED.start_bar_index,
+    end_bar_index             = EXCLUDED.end_bar_index,
+    observation_count         = EXCLUDED.observation_count,
+    log_slope_per_bar         = EXCLUDED.log_slope_per_bar,
+    linearity_r2              = EXCLUDED.linearity_r2,
+    fitted_log_return         = EXCLUDED.fitted_log_return,
+    actual_log_return         = EXCLUDED.actual_log_return,
+    realized_volatility_daily = EXCLUDED.realized_volatility_daily,
+    vol_adjusted_trend        = EXCLUDED.vol_adjusted_trend,
+    efficiency_ratio          = EXCLUDED.efficiency_ratio,
+    method                    = EXCLUDED.method,
+    calculation_version       = EXCLUDED.calculation_version
+"""
+
+_DELETE_TREND_SEGMENTS_FOR_LOOKBACK = """
+DELETE FROM trend_segment_daily
+WHERE symbol = %s AND date = %s AND lookback_bars = %s
+"""
+
+_DELETE_UNCONFIGURED_SEGMENT_LOOKBACKS = """
+DELETE FROM trend_segment_daily
+WHERE symbol = %s AND date = %s AND NOT (lookback_bars = ANY(%s))
+"""
+
+_DELETE_UNCONFIGURED_SEGMENTATION_LOOKBACKS = """
+DELETE FROM trend_segmentation_daily
+WHERE symbol = %s AND date = %s AND NOT (lookback_bars = ANY(%s))
+"""
+
 _FETCH_LATEST_INDICATOR_DATE = """
 SELECT MAX(date) FROM support_resistance_daily
 """
@@ -256,6 +325,99 @@ def upsert_trend_daily(rows: list[dict[str, Any]]) -> None:
                     row.get("jackknife_slope_stability"),
                     row.get("adjacent_slope_stability"),
                     row.get("calculation_version"),
+                ),
+            )
+        conn.commit()
+
+
+def upsert_trend_segmentation_daily(
+    summaries: list[dict[str, Any]],
+    segments: list[dict[str, Any]],
+) -> None:
+    """Replace adaptive segment details and upsert summaries in one transaction."""
+    if not summaries:
+        return
+    symbol = str(summaries[0]["symbol"])
+    snapshot_date = summaries[0]["date"]
+    lookbacks = [int(row["lookback_bars"]) for row in summaries]
+    if any(
+        str(row["symbol"]) != symbol or row["date"] != snapshot_date for row in summaries
+    ):
+        raise ValueError("Segmentation summaries must belong to one symbol/date snapshot.")
+    expected_counts = {
+        int(row["lookback_bars"]): int(row["segment_count"]) for row in summaries
+    }
+    actual_counts = dict.fromkeys(expected_counts, 0)
+    for row in segments:
+        lookback_bars = int(row["lookback_bars"])
+        if (
+            str(row["symbol"]) != symbol
+            or row["date"] != snapshot_date
+            or lookback_bars not in expected_counts
+        ):
+            raise ValueError("Segments must match the summary symbol/date/lookback snapshot.")
+        actual_counts[lookback_bars] += 1
+    if actual_counts != expected_counts:
+        raise ValueError("Segment row counts must match summary segment_count values.")
+
+    with get_conn() as conn:
+        conn.execute(
+            _DELETE_UNCONFIGURED_SEGMENT_LOOKBACKS,
+            (symbol, snapshot_date, lookbacks),
+        )
+        conn.execute(
+            _DELETE_UNCONFIGURED_SEGMENTATION_LOOKBACKS,
+            (symbol, snapshot_date, lookbacks),
+        )
+        for row in summaries:
+            lookback_bars = int(row["lookback_bars"])
+            conn.execute(
+                _DELETE_TREND_SEGMENTS_FOR_LOOKBACK,
+                (symbol, snapshot_date, lookback_bars),
+            )
+            conn.execute(
+                _UPSERT_TREND_SEGMENTATION_DAILY,
+                (
+                    symbol,
+                    snapshot_date,
+                    lookback_bars,
+                    row["observation_count"],
+                    row["segment_count"],
+                    row["change_point_count"],
+                    row.get("selected_rss"),
+                    row.get("single_segment_rss"),
+                    row.get("selected_bic"),
+                    row.get("single_segment_bic"),
+                    row.get("bic_improvement"),
+                    row["min_segment_bars"],
+                    row["max_segments"],
+                    row["bic_penalty_multiplier"],
+                    row["method"],
+                    row["calculation_version"],
+                ),
+            )
+        for row in segments:
+            conn.execute(
+                _UPSERT_TREND_SEGMENT_DAILY,
+                (
+                    row["symbol"],
+                    row["date"],
+                    row["lookback_bars"],
+                    row["segment_index"],
+                    row["start_date"],
+                    row["end_date"],
+                    row["start_bar_index"],
+                    row["end_bar_index"],
+                    row["observation_count"],
+                    row.get("log_slope_per_bar"),
+                    row.get("linearity_r2"),
+                    row.get("fitted_log_return"),
+                    row.get("actual_log_return"),
+                    row.get("realized_volatility_daily"),
+                    row.get("vol_adjusted_trend"),
+                    row.get("efficiency_ratio"),
+                    row["method"],
+                    row["calculation_version"],
                 ),
             )
         conn.commit()

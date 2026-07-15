@@ -83,6 +83,72 @@ CREATE INDEX IF NOT EXISTS trend_daily_symbol_date_idx
 """
 
 
+_CREATE_TREND_SEGMENTATION_DAILY = """
+CREATE TABLE IF NOT EXISTS trend_segmentation_daily (
+    symbol                    TEXT NOT NULL,
+    date                      DATE NOT NULL,
+    lookback_bars             INT  NOT NULL,
+    observation_count         INT  NOT NULL,
+    segment_count             INT  NOT NULL,
+    change_point_count        INT  NOT NULL,
+    selected_rss              FLOAT,
+    single_segment_rss        FLOAT,
+    selected_bic              FLOAT,
+    single_segment_bic        FLOAT,
+    bic_improvement           FLOAT,
+    min_segment_bars          INT  NOT NULL,
+    max_segments              INT  NOT NULL,
+    bic_penalty_multiplier    FLOAT NOT NULL DEFAULT 3.0,
+    method                    TEXT NOT NULL,
+    calculation_version       TEXT NOT NULL,
+    PRIMARY KEY (symbol, date, lookback_bars)
+);
+"""
+
+_ALTER_TREND_SEGMENTATION_DAILY = """
+ALTER TABLE trend_segmentation_daily
+    ADD COLUMN IF NOT EXISTS bic_penalty_multiplier FLOAT NOT NULL DEFAULT 3.0;
+"""
+
+_CREATE_TREND_SEGMENTATION_DAILY_IDX = """
+CREATE INDEX IF NOT EXISTS trend_segmentation_daily_date_lookback_idx
+    ON trend_segmentation_daily (date DESC, lookback_bars);
+CREATE INDEX IF NOT EXISTS trend_segmentation_daily_symbol_date_idx
+    ON trend_segmentation_daily (symbol, date DESC);
+"""
+
+_CREATE_TREND_SEGMENT_DAILY = """
+CREATE TABLE IF NOT EXISTS trend_segment_daily (
+    symbol                       TEXT NOT NULL,
+    date                         DATE NOT NULL,
+    lookback_bars                INT  NOT NULL,
+    segment_index                INT  NOT NULL,
+    start_date                   DATE NOT NULL,
+    end_date                     DATE NOT NULL,
+    start_bar_index              INT  NOT NULL,
+    end_bar_index                INT  NOT NULL,
+    observation_count            INT  NOT NULL,
+    log_slope_per_bar            FLOAT,
+    linearity_r2                 FLOAT,
+    fitted_log_return            FLOAT,
+    actual_log_return            FLOAT,
+    realized_volatility_daily    FLOAT,
+    vol_adjusted_trend           FLOAT,
+    efficiency_ratio             FLOAT,
+    method                       TEXT NOT NULL,
+    calculation_version          TEXT NOT NULL,
+    PRIMARY KEY (symbol, date, lookback_bars, segment_index)
+);
+"""
+
+_CREATE_TREND_SEGMENT_DAILY_IDX = """
+CREATE INDEX IF NOT EXISTS trend_segment_daily_date_lookback_idx
+    ON trend_segment_daily (date DESC, lookback_bars);
+CREATE INDEX IF NOT EXISTS trend_segment_daily_symbol_date_idx
+    ON trend_segment_daily (symbol, date DESC);
+"""
+
+
 _CREATE_SECTOR_HEAT_DAILY = """
 CREATE TABLE IF NOT EXISTS sector_heat_daily (
     universe_ticker   TEXT  NOT NULL,
@@ -116,6 +182,11 @@ def init_schema() -> None:
         conn.execute(_CREATE_TREND_DAILY)
         _execute_statements(conn, _ALTER_TREND_DAILY)
         _execute_statements(conn, _CREATE_TREND_DAILY_IDX)
+        conn.execute(_CREATE_TREND_SEGMENTATION_DAILY)
+        _execute_statements(conn, _ALTER_TREND_SEGMENTATION_DAILY)
+        _execute_statements(conn, _CREATE_TREND_SEGMENTATION_DAILY_IDX)
+        conn.execute(_CREATE_TREND_SEGMENT_DAILY)
+        _execute_statements(conn, _CREATE_TREND_SEGMENT_DAILY_IDX)
         conn.execute(_CREATE_SECTOR_HEAT_DAILY)
         _execute_statements(conn, _CREATE_SECTOR_HEAT_DAILY_IDX)
         conn.commit()

@@ -22,6 +22,12 @@ indicators:
       - {label: 40d, far_bars: 40, near_bars: 0}
       - {label: 60d, far_bars: 60, near_bars: 0}
 
+  adaptive_trend:
+    lookbacks: [40, 60]
+    min_segment_bars: 5
+    max_segments: 4
+    bic_penalty_multiplier: 3.0
+
 # Backward-compatible alias for older code paths and saved prefs.
 strategies:
   support_resistance:

@@ -1,3 +1,4 @@
+from market_analysis.indicators.adaptive_trend import compute_adaptive_trend_experiment
 from market_analysis.indicators.sector_heat import (
     compute_sector_heat,
     compute_sector_heat_history,
@@ -10,6 +11,7 @@ from market_analysis.indicators.support_resistance import (
 from market_analysis.indicators.trend import compute_trend_indicators
 
 __all__ = [
+    "compute_adaptive_trend_experiment",
     "compute_raw_swings",
     "compute_sector_heat",
     "compute_sector_heat_history",

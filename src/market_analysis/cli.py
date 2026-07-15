@@ -61,6 +61,19 @@ def run_sector_heat() -> None:
     typer.echo(f"Done. {total} sectors written to sector_heat_daily.")
 
 
+@app.command("run-trend-segmentation-experiment")
+def run_trend_segmentation_experiment() -> None:
+    """Run the adaptive piecewise-linear trend segmentation experiment."""
+    from market_analysis.db.schema import init_schema
+    from market_analysis.pipeline.run_adaptive_trend_experiment import (
+        run_adaptive_trend_experiment_pipeline,
+    )
+
+    init_schema()
+    total = run_adaptive_trend_experiment_pipeline()
+    typer.echo(f"Done. {total} symbols written to adaptive trend experiment tables.")
+
+
 @app.command("show")
 def show(
     target_date: str = typer.Option(

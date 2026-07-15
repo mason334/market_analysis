@@ -61,9 +61,11 @@ market_analysis/
 │   ├── indicators/
 │   │   ├── support_resistance.py     # 支撑/阻力指标计算
 │   │   ├── trend.py                  # 趋势指标计算
+│   │   ├── adaptive_trend.py         # 自适应分段实验（纯计算）
 │   │   └── sector_heat.py            # 板块热度指标计算
 │   ├── pipeline/
 │   │   ├── run_indicators.py         # 每日 symbol 级指标批量执行
+│   │   ├── run_adaptive_trend_experiment.py # 独立自适应分段实验
 │   │   └── run_sector_heat.py        # 每日板块热度批量执行
 │   │   └── archive/                  # 历史 pipeline，不参与当前 CLI 主流程
 │   ├── strategies/
@@ -86,6 +88,8 @@ market_analysis/
 
 - `support_resistance_daily`：支撑/阻力快照，每 `symbol/date` 一行。
 - `trend_daily`：趋势快照，每 `symbol/date/window_label` 一行。
+- `trend_segmentation_daily`：自适应分段模型选择摘要，每 `symbol/date/lookback_bars` 一行。
+- `trend_segment_daily`：自适应分段明细，每 `symbol/date/lookback_bars/segment_index` 一行。
 - `sector_heat_daily`：板块热度快照，每 `universe_ticker/date` 一行。
 
 `queries.py` 中的快照查询函数从 `support_resistance_daily` + `trend_daily` 拼出宽表结果，不再回退到历史兼容表。
@@ -166,6 +170,14 @@ CREATE INDEX IF NOT EXISTS trend_daily_symbol_date_idx
 `log_slope_per_bar`、`linearity_r2`、拟合/实际 log return、日度实现波动率、
 波动率调整趋势、路径效率和斜率稳定性字段使用 `fixed_trend_v2` 口径。
 
+### 自适应趋势分段实验表
+
+`trend_segmentation_daily` 保存 40/60 bar 实验窗口的分段数、RSS、BIC 与模型参数；
+`trend_segment_daily` 保存每一段的日期边界、bar 索引、log slope、R²、return、波动率、
+波动率调整趋势和路径效率。算法口径为 `adaptive_trend_v1`，方法为
+`piecewise_log_linear_dp_bic`。BIC 复杂度惩罚乘数由 `bic_penalty_multiplier` 配置，默认 3.0，
+并随摘要持久化。实验由独立 CLI 触发，不属于 `run-indicators` 固定窗口流程。
+
 ### sector_heat_daily
 
 ```sql
@@ -230,6 +242,9 @@ market-analysis run-strategies
 # 计算板块热度，写入 sector_heat_daily
 market-analysis run-sector-heat
 
+# 运行自适应趋势分段实验，写入两张独立分段表
+market-analysis run-trend-segmentation-experiment
+
 # 查看指定日期指标快照
 market-analysis show --date 2026-05-29
 
@@ -291,7 +306,8 @@ cron 建议顺序：
 `investment_dashboard` 是统一展示与分析项目，负责读取本项目写入的表或查询结果。本项目修改以下内容时，最终回复必须说明 `investment_dashboard` 影响：
 
 - 数据库表、字段、索引、主键、唯一约束。
-- `support_resistance_daily`、`trend_daily`、`sector_heat_daily` 的字段含义。
+- `support_resistance_daily`、`trend_daily`、`trend_segmentation_daily`、
+  `trend_segment_daily`、`sector_heat_daily` 的字段含义。
 - `queries.py` 中供下游使用的返回列、列名、排序、空值语义。
 - CLI 命令名称或输出格式。
 - 下游可能依赖的配置键、参数默认值或数据语义。
