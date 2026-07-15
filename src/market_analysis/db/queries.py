@@ -23,9 +23,6 @@ _INDICATOR_SNAPSHOT_COLS = [
     "trend_slope_20d", "trend_r2_20d",
     "trend_slope_40d", "trend_r2_40d",
     "trend_slope_60d", "trend_r2_60d",
-    "trend_slope_11_20d", "trend_r2_11_20d",
-    "trend_slope_20_40d", "trend_r2_20_40d",
-    "trend_slope_40_60d", "trend_r2_40_60d",
 ]
 
 _TREND_PIVOT_COLS = """
@@ -38,13 +35,7 @@ _TREND_PIVOT_COLS = """
        MAX(CASE WHEN window_label = '40d' THEN slope END) AS trend_slope_40d,
        MAX(CASE WHEN window_label = '40d' THEN r2 END) AS trend_r2_40d,
        MAX(CASE WHEN window_label = '60d' THEN slope END) AS trend_slope_60d,
-       MAX(CASE WHEN window_label = '60d' THEN r2 END) AS trend_r2_60d,
-       MAX(CASE WHEN window_label = '11_20d' THEN slope END) AS trend_slope_11_20d,
-       MAX(CASE WHEN window_label = '11_20d' THEN r2 END) AS trend_r2_11_20d,
-       MAX(CASE WHEN window_label = '20_40d' THEN slope END) AS trend_slope_20_40d,
-       MAX(CASE WHEN window_label = '20_40d' THEN r2 END) AS trend_r2_20_40d,
-       MAX(CASE WHEN window_label = '40_60d' THEN slope END) AS trend_slope_40_60d,
-       MAX(CASE WHEN window_label = '40_60d' THEN r2 END) AS trend_r2_40_60d
+       MAX(CASE WHEN window_label = '60d' THEN r2 END) AS trend_r2_60d
 """
 
 _FETCH_OHLCV = """
@@ -79,15 +70,41 @@ ON CONFLICT (symbol, date) DO UPDATE SET
 
 _UPSERT_TREND_DAILY = """
 INSERT INTO trend_daily (
-    symbol, date, window_label, far_bars, near_bars, slope, r2, method
+    symbol, date, window_label, far_bars, near_bars, slope, r2, method,
+    observation_count, log_slope_per_bar, linearity_r2,
+    fitted_log_return, actual_log_return, realized_volatility_daily,
+    vol_adjusted_trend, efficiency_ratio,
+    jackknife_slope_stability, adjacent_slope_stability,
+    calculation_version
 )
-VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
+VALUES (
+    %s, %s, %s, %s, %s, %s, %s, %s,
+    %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s
+)
 ON CONFLICT (symbol, date, window_label) DO UPDATE SET
-    far_bars  = EXCLUDED.far_bars,
-    near_bars = EXCLUDED.near_bars,
-    slope     = EXCLUDED.slope,
-    r2        = EXCLUDED.r2,
-    method    = EXCLUDED.method
+    far_bars                    = EXCLUDED.far_bars,
+    near_bars                   = EXCLUDED.near_bars,
+    slope                       = EXCLUDED.slope,
+    r2                          = EXCLUDED.r2,
+    method                      = EXCLUDED.method,
+    observation_count           = EXCLUDED.observation_count,
+    log_slope_per_bar           = EXCLUDED.log_slope_per_bar,
+    linearity_r2                = EXCLUDED.linearity_r2,
+    fitted_log_return           = EXCLUDED.fitted_log_return,
+    actual_log_return           = EXCLUDED.actual_log_return,
+    realized_volatility_daily   = EXCLUDED.realized_volatility_daily,
+    vol_adjusted_trend          = EXCLUDED.vol_adjusted_trend,
+    efficiency_ratio            = EXCLUDED.efficiency_ratio,
+    jackknife_slope_stability   = EXCLUDED.jackknife_slope_stability,
+    adjacent_slope_stability    = EXCLUDED.adjacent_slope_stability,
+    calculation_version         = EXCLUDED.calculation_version
+"""
+
+_DELETE_UNCONFIGURED_TREND_WINDOWS = """
+DELETE FROM trend_daily
+WHERE symbol = %s
+  AND date = %s
+  AND NOT (window_label = ANY(%s))
 """
 
 _FETCH_LATEST_INDICATOR_DATE = """
@@ -111,10 +128,7 @@ SELECT sr.symbol, sr.date,
        tp.trend_slope_10d, tp.trend_r2_10d,
        tp.trend_slope_20d, tp.trend_r2_20d,
        tp.trend_slope_40d, tp.trend_r2_40d,
-       tp.trend_slope_60d, tp.trend_r2_60d,
-       tp.trend_slope_11_20d, tp.trend_r2_11_20d,
-       tp.trend_slope_20_40d, tp.trend_r2_20_40d,
-       tp.trend_slope_40_60d, tp.trend_r2_40_60d
+       tp.trend_slope_60d, tp.trend_r2_60d
 FROM support_resistance_daily sr
 LEFT JOIN trend_pivot tp
   ON sr.symbol = tp.symbol AND sr.date = tp.date
@@ -139,10 +153,7 @@ SELECT sr.symbol, sr.date,
        tp.trend_slope_10d, tp.trend_r2_10d,
        tp.trend_slope_20d, tp.trend_r2_20d,
        tp.trend_slope_40d, tp.trend_r2_40d,
-       tp.trend_slope_60d, tp.trend_r2_60d,
-       tp.trend_slope_11_20d, tp.trend_r2_11_20d,
-       tp.trend_slope_20_40d, tp.trend_r2_20_40d,
-       tp.trend_slope_40_60d, tp.trend_r2_40_60d
+       tp.trend_slope_60d, tp.trend_r2_60d
 FROM support_resistance_daily sr
 LEFT JOIN trend_pivot tp
   ON sr.symbol = tp.symbol AND sr.date = tp.date
@@ -167,10 +178,7 @@ SELECT sr.symbol, sr.date,
        tp.trend_slope_10d, tp.trend_r2_10d,
        tp.trend_slope_20d, tp.trend_r2_20d,
        tp.trend_slope_40d, tp.trend_r2_40d,
-       tp.trend_slope_60d, tp.trend_r2_60d,
-       tp.trend_slope_11_20d, tp.trend_r2_11_20d,
-       tp.trend_slope_20_40d, tp.trend_r2_20_40d,
-       tp.trend_slope_40_60d, tp.trend_r2_40_60d
+       tp.trend_slope_60d, tp.trend_r2_60d
 FROM support_resistance_daily sr
 LEFT JOIN trend_pivot tp
   ON sr.symbol = tp.symbol AND sr.date = tp.date
@@ -216,6 +224,15 @@ def upsert_trend_daily(rows: list[dict[str, Any]]) -> None:
     if not rows:
         return
     with get_conn() as conn:
+        windows_by_snapshot: dict[tuple[str, date], list[str]] = {}
+        for row in rows:
+            key = (str(row["symbol"]), row["date"])
+            windows_by_snapshot.setdefault(key, []).append(str(row["window_label"]))
+        for (symbol, snapshot_date), window_labels in windows_by_snapshot.items():
+            conn.execute(
+                _DELETE_UNCONFIGURED_TREND_WINDOWS,
+                (symbol, snapshot_date, window_labels),
+            )
         for row in rows:
             conn.execute(
                 _UPSERT_TREND_DAILY,
@@ -228,6 +245,17 @@ def upsert_trend_daily(rows: list[dict[str, Any]]) -> None:
                     row.get("slope"),
                     row.get("r2"),
                     row.get("method", "linear_regression"),
+                    row.get("observation_count"),
+                    row.get("log_slope_per_bar"),
+                    row.get("linearity_r2"),
+                    row.get("fitted_log_return"),
+                    row.get("actual_log_return"),
+                    row.get("realized_volatility_daily"),
+                    row.get("vol_adjusted_trend"),
+                    row.get("efficiency_ratio"),
+                    row.get("jackknife_slope_stability"),
+                    row.get("adjacent_slope_stability"),
+                    row.get("calculation_version"),
                 ),
             )
         conn.commit()

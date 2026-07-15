@@ -36,21 +36,50 @@ CREATE INDEX IF NOT EXISTS support_resistance_daily_status_idx
 
 _CREATE_TREND_DAILY = """
 CREATE TABLE IF NOT EXISTS trend_daily (
-    symbol        TEXT NOT NULL,
-    date          DATE NOT NULL,
-    window_label  TEXT NOT NULL,
-    far_bars      INT  NOT NULL,
-    near_bars     INT  NOT NULL DEFAULT 0,
-    slope         FLOAT,
-    r2            FLOAT,
-    method        TEXT NOT NULL DEFAULT 'linear_regression',
+    symbol                       TEXT NOT NULL,
+    date                         DATE NOT NULL,
+    window_label                 TEXT NOT NULL,
+    far_bars                     INT  NOT NULL,
+    near_bars                    INT  NOT NULL DEFAULT 0,
+    slope                        FLOAT,
+    r2                           FLOAT,
+    method                       TEXT NOT NULL DEFAULT 'linear_regression',
+    observation_count            INT,
+    log_slope_per_bar            FLOAT,
+    linearity_r2                 FLOAT,
+    fitted_log_return            FLOAT,
+    actual_log_return            FLOAT,
+    realized_volatility_daily    FLOAT,
+    vol_adjusted_trend           FLOAT,
+    efficiency_ratio             FLOAT,
+    jackknife_slope_stability    FLOAT,
+    adjacent_slope_stability     FLOAT,
+    calculation_version          TEXT,
     PRIMARY KEY (symbol, date, window_label)
 );
+"""
+
+_ALTER_TREND_DAILY = """
+ALTER TABLE trend_daily ADD COLUMN IF NOT EXISTS observation_count INT;
+ALTER TABLE trend_daily ADD COLUMN IF NOT EXISTS log_slope_per_bar FLOAT;
+ALTER TABLE trend_daily ADD COLUMN IF NOT EXISTS linearity_r2 FLOAT;
+ALTER TABLE trend_daily ADD COLUMN IF NOT EXISTS fitted_log_return FLOAT;
+ALTER TABLE trend_daily ADD COLUMN IF NOT EXISTS actual_log_return FLOAT;
+ALTER TABLE trend_daily ADD COLUMN IF NOT EXISTS realized_volatility_daily FLOAT;
+ALTER TABLE trend_daily ADD COLUMN IF NOT EXISTS vol_adjusted_trend FLOAT;
+ALTER TABLE trend_daily ADD COLUMN IF NOT EXISTS efficiency_ratio FLOAT;
+ALTER TABLE trend_daily ADD COLUMN IF NOT EXISTS jackknife_slope_stability FLOAT;
+ALTER TABLE trend_daily ADD COLUMN IF NOT EXISTS adjacent_slope_stability FLOAT;
+ALTER TABLE trend_daily ADD COLUMN IF NOT EXISTS calculation_version TEXT;
 """
 
 _CREATE_TREND_DAILY_IDX = """
 CREATE INDEX IF NOT EXISTS trend_daily_date_idx   ON trend_daily (date DESC);
 CREATE INDEX IF NOT EXISTS trend_daily_symbol_idx ON trend_daily (symbol);
+CREATE INDEX IF NOT EXISTS trend_daily_date_window_idx
+    ON trend_daily (date DESC, window_label);
+CREATE INDEX IF NOT EXISTS trend_daily_symbol_date_idx
+    ON trend_daily (symbol, date DESC);
 """
 
 
@@ -85,6 +114,7 @@ def init_schema() -> None:
         conn.execute(_CREATE_SUPPORT_RESISTANCE_DAILY)
         _execute_statements(conn, _CREATE_SUPPORT_RESISTANCE_DAILY_IDX)
         conn.execute(_CREATE_TREND_DAILY)
+        _execute_statements(conn, _ALTER_TREND_DAILY)
         _execute_statements(conn, _CREATE_TREND_DAILY_IDX)
         conn.execute(_CREATE_SECTOR_HEAT_DAILY)
         _execute_statements(conn, _CREATE_SECTOR_HEAT_DAILY_IDX)

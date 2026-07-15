@@ -21,9 +21,6 @@ indicators:
       - {label: 20d, far_bars: 20, near_bars: 0}
       - {label: 40d, far_bars: 40, near_bars: 0}
       - {label: 60d, far_bars: 60, near_bars: 0}
-      - {label: 11_20d, far_bars: 20, near_bars: 10}
-      - {label: 20_40d, far_bars: 40, near_bars: 20}
-      - {label: 40_60d, far_bars: 60, near_bars: 40}
 
 # Backward-compatible alias for older code paths and saved prefs.
 strategies:

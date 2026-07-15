@@ -126,14 +126,25 @@ CREATE INDEX IF NOT EXISTS support_resistance_daily_status_idx
 
 ```sql
 CREATE TABLE IF NOT EXISTS trend_daily (
-    symbol        TEXT NOT NULL,
-    date          DATE NOT NULL,
-    window_label  TEXT NOT NULL,
-    far_bars      INT  NOT NULL,
-    near_bars     INT  NOT NULL DEFAULT 0,
-    slope         FLOAT,
-    r2            FLOAT,
-    method        TEXT NOT NULL DEFAULT 'linear_regression',
+    symbol                       TEXT NOT NULL,
+    date                         DATE NOT NULL,
+    window_label                 TEXT NOT NULL,
+    far_bars                     INT  NOT NULL,
+    near_bars                    INT  NOT NULL DEFAULT 0,
+    slope                        FLOAT,
+    r2                           FLOAT,
+    method                       TEXT NOT NULL DEFAULT 'linear_regression',
+    observation_count            INT,
+    log_slope_per_bar            FLOAT,
+    linearity_r2                 FLOAT,
+    fitted_log_return            FLOAT,
+    actual_log_return            FLOAT,
+    realized_volatility_daily    FLOAT,
+    vol_adjusted_trend           FLOAT,
+    efficiency_ratio             FLOAT,
+    jackknife_slope_stability    FLOAT,
+    adjacent_slope_stability     FLOAT,
+    calculation_version          TEXT,
     PRIMARY KEY (symbol, date, window_label)
 );
 ```
@@ -145,7 +156,15 @@ CREATE INDEX IF NOT EXISTS trend_daily_date_idx
     ON trend_daily (date DESC);
 CREATE INDEX IF NOT EXISTS trend_daily_symbol_idx
     ON trend_daily (symbol);
+CREATE INDEX IF NOT EXISTS trend_daily_date_window_idx
+    ON trend_daily (date DESC, window_label);
+CREATE INDEX IF NOT EXISTS trend_daily_symbol_date_idx
+    ON trend_daily (symbol, date DESC);
 ```
+
+生产固定窗口为 `5d/10d/20d/40d/60d`。`slope/r2` 暂时保留旧口径供兼容；新增
+`log_slope_per_bar`、`linearity_r2`、拟合/实际 log return、日度实现波动率、
+波动率调整趋势、路径效率和斜率稳定性字段使用 `fixed_trend_v2` 口径。
 
 ### sector_heat_daily
 

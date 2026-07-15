@@ -142,19 +142,33 @@ CREATE TABLE IF NOT EXISTS support_resistance_daily (
 
 ```sql
 CREATE TABLE IF NOT EXISTS trend_daily (
-    symbol        TEXT NOT NULL,
-    date          DATE NOT NULL,
-    window_label  TEXT NOT NULL,
-    far_bars      INT  NOT NULL,
-    near_bars     INT  NOT NULL DEFAULT 0,
-    slope         FLOAT,
-    r2            FLOAT,
-    method        TEXT NOT NULL DEFAULT 'linear_regression',
+    symbol                       TEXT NOT NULL,
+    date                         DATE NOT NULL,
+    window_label                 TEXT NOT NULL,
+    far_bars                     INT  NOT NULL,
+    near_bars                    INT  NOT NULL DEFAULT 0,
+    slope                        FLOAT,
+    r2                           FLOAT,
+    method                       TEXT NOT NULL DEFAULT 'linear_regression',
+    observation_count            INT,
+    log_slope_per_bar            FLOAT,
+    linearity_r2                 FLOAT,
+    fitted_log_return            FLOAT,
+    actual_log_return            FLOAT,
+    realized_volatility_daily    FLOAT,
+    vol_adjusted_trend           FLOAT,
+    efficiency_ratio             FLOAT,
+    jackknife_slope_stability    FLOAT,
+    adjacent_slope_stability     FLOAT,
+    calculation_version          TEXT,
     PRIMARY KEY (symbol, date, window_label)
 );
 ```
 
-趋势斜率（`trend_daily.slope`）= 线性回归原始斜率 / 窗口首日收盘价，近似每 bar 的涨跌幅速率，不同价位的标的可直接比较。
+生产窗口为 `5d/10d/20d/40d/60d`。`slope/r2` 暂时保留旧口径供下游兼容；
+固定趋势 v2 的基础值为 `log_slope_per_bar` 和 `linearity_r2`，并同时保存拟合/实际
+log return、日度实现波动率、波动率调整趋势、路径效率和斜率稳定性。数据库使用小数
+log 口径，不提前乘 100 或舍入；百分比展示由下游转换。
 
 ### sector_heat_daily（板块热度快照）
 
