@@ -1,95 +1,112 @@
 from __future__ import annotations
 
+from collections.abc import Iterator
 from datetime import date
+from itertools import combinations
 from typing import Any
 
 import numpy as np
 import pandas as pd
-from scipy import stats
 
 DEFAULT_LOOKBACKS: tuple[int, ...] = (40, 60)
-_METHOD = "piecewise_log_linear_dp_bic"
-_CALCULATION_VERSION = "adaptive_trend_v1"
+_METHOD = "continuous_piecewise_log_linear_exhaustive_bic"
+_CALCULATION_VERSION = "adaptive_trend_v2"
 _EPSILON = 1e-12
 
 
-def _linear_fit(values: np.ndarray) -> tuple[float, float, float]:
-    x = np.arange(len(values), dtype=float)
-    slope, intercept, r_value, _, _ = stats.linregress(x, values)
-    residuals = values - (intercept + slope * x)
-    rss = float(np.dot(residuals, residuals))
-    return float(slope), float(r_value**2), max(rss, 0.0)
-
-
-def _segment_costs(log_prices: np.ndarray, min_segment_bars: int) -> np.ndarray:
-    size = len(log_prices)
-    costs = np.full((size + 1, size + 1), np.inf, dtype=float)
-    x = np.arange(size, dtype=float)
-
-    def prefix(values: np.ndarray) -> np.ndarray:
-        return np.concatenate(([0.0], np.cumsum(values, dtype=float)))
-
-    prefix_x = prefix(x)
-    prefix_xx = prefix(x * x)
-    prefix_y = prefix(log_prices)
-    prefix_yy = prefix(log_prices * log_prices)
-    prefix_xy = prefix(x * log_prices)
-
-    for start in range(size):
-        for end in range(start + min_segment_bars, size + 1):
-            count = end - start
-            sum_x = prefix_x[end] - prefix_x[start]
-            sum_xx = prefix_xx[end] - prefix_xx[start]
-            sum_y = prefix_y[end] - prefix_y[start]
-            sum_yy = prefix_yy[end] - prefix_yy[start]
-            sum_xy = prefix_xy[end] - prefix_xy[start]
-            denominator = count * sum_xx - sum_x * sum_x
-            slope = (count * sum_xy - sum_x * sum_y) / denominator
-            intercept = (sum_y - slope * sum_x) / count
-            rss = sum_yy - intercept * sum_y - slope * sum_xy
-            costs[start, end] = max(float(rss), 0.0)
-    return costs
-
-
-def _optimal_boundaries(
-    costs: np.ndarray,
+def _boundary_candidates(
+    size: int,
     segment_count: int,
     min_segment_bars: int,
-) -> tuple[list[int], float] | None:
-    """Return exact minimum-RSS boundaries for a fixed number of segments."""
-    size = costs.shape[0] - 1
+) -> Iterator[tuple[int, ...]]:
+    """Yield half-open boundaries whose owned observations meet the minimum size."""
     if segment_count * min_segment_bars > size:
+        return
+    if segment_count == 1:
+        yield (0, size)
+        return
+
+    internal_count = segment_count - 1
+    possible = range(min_segment_bars, size - min_segment_bars + 1)
+    for internal in combinations(possible, internal_count):
+        boundaries = (0, *internal, size)
+        if all(
+            end - start >= min_segment_bars
+            for start, end in zip(boundaries[:-1], boundaries[1:])
+        ):
+            yield boundaries
+
+
+def _continuous_design(size: int, boundaries: tuple[int, ...]) -> np.ndarray:
+    """Build a continuous linear-spline design for half-open segment boundaries.
+
+    An internal boundary ``start`` assigns the incoming ``start - 1 -> start``
+    price move to the later segment, so the slope knot is placed at ``start - 1``.
+    """
+    scale = float(max(size - 1, 1))
+    x = np.arange(size, dtype=float) / scale
+    columns = [np.ones(size, dtype=float), x]
+    columns.extend(
+        np.maximum(x - float(boundary - 1) / scale, 0.0)
+        for boundary in boundaries[1:-1]
+    )
+    return np.column_stack(columns)
+
+
+def _fit_continuous_piecewise(
+    log_prices: np.ndarray,
+    boundaries: tuple[int, ...],
+) -> tuple[np.ndarray, np.ndarray, np.ndarray, float]:
+    """Fit one global continuous piecewise-linear OLS model."""
+    design = _continuous_design(len(log_prices), boundaries)
+    coefficients, _, _, _ = np.linalg.lstsq(design, log_prices, rcond=None)
+    fitted = design @ coefficients
+    residuals = log_prices - fitted
+    rss = max(float(np.dot(residuals, residuals)), 0.0)
+    slope_changes = coefficients[2:]
+    slopes = coefficients[1] + np.concatenate(
+        (np.array([0.0]), np.cumsum(slope_changes, dtype=float))
+    )
+    slopes /= float(max(len(log_prices) - 1, 1))
+    return coefficients, fitted, slopes.astype(float), rss
+
+
+def _best_boundaries(
+    log_prices: np.ndarray,
+    segment_count: int,
+    min_segment_bars: int,
+) -> tuple[tuple[int, ...], np.ndarray, np.ndarray, float] | None:
+    """Return the exact minimum-RSS continuous fit for a fixed segment count."""
+    candidates = list(
+        _boundary_candidates(len(log_prices), segment_count, min_segment_bars)
+    )
+    if not candidates:
         return None
+    if segment_count == 1:
+        boundaries = candidates[0]
+        _, fitted, slopes, rss = _fit_continuous_piecewise(log_prices, boundaries)
+        return boundaries, fitted, slopes, rss
 
-    dynamic = np.full((segment_count + 1, size + 1), np.inf, dtype=float)
-    previous = np.full((segment_count + 1, size + 1), -1, dtype=int)
-    dynamic[0, 0] = 0.0
-
-    for count in range(1, segment_count + 1):
-        min_end = count * min_segment_bars
-        for end in range(min_end, size + 1):
-            first_start = (count - 1) * min_segment_bars
-            last_start = end - min_segment_bars
-            for start in range(first_start, last_start + 1):
-                candidate = dynamic[count - 1, start] + costs[start, end]
-                if candidate < dynamic[count, end]:
-                    dynamic[count, end] = candidate
-                    previous[count, end] = start
-
-    rss = float(dynamic[segment_count, size])
-    if not np.isfinite(rss):
-        return None
-
-    boundaries = [size]
-    end = size
-    for count in range(segment_count, 0, -1):
-        start = int(previous[count, end])
-        if start < 0:
-            return None
-        boundaries.append(start)
-        end = start
-    boundaries.reverse()
-    return boundaries, rss
+    size = len(log_prices)
+    scale = float(max(size - 1, 1))
+    x = np.arange(size, dtype=float) / scale
+    base = np.column_stack((np.ones(size, dtype=float), x))
+    knots = (np.asarray([row[1:-1] for row in candidates], dtype=float) - 1.0) / scale
+    hinges = np.maximum(x[None, :, None] - knots[:, None, :], 0.0)
+    repeated_base = np.broadcast_to(base, (len(candidates), size, 2))
+    designs = np.concatenate((repeated_base, hinges), axis=2)
+    gram = np.einsum("cnp,cnq->cpq", designs, designs, optimize=True)
+    rhs = np.einsum("cnp,n->cp", designs, log_prices, optimize=True)
+    coefficients = np.linalg.solve(gram, rhs[..., None])[..., 0]
+    rss_values = np.maximum(
+        float(np.dot(log_prices, log_prices))
+        - np.einsum("cp,cp->c", coefficients, rhs, optimize=True),
+        0.0,
+    )
+    best_index = int(np.argmin(rss_values))
+    boundaries = candidates[best_index]
+    _, fitted, slopes, rss = _fit_continuous_piecewise(log_prices, boundaries)
+    return boundaries, fitted, slopes, rss
 
 
 def _bic(
@@ -98,8 +115,8 @@ def _bic(
     segment_count: int,
     penalty_multiplier: float,
 ) -> float:
-    # Each segment has slope + intercept; each internal boundary adds one degree of freedom.
-    parameter_count = 2 * segment_count + (segment_count - 1)
+    # A continuous K-segment spline has K+1 coefficients and K-1 knot locations.
+    parameter_count = 2 * segment_count
     scaled_rss = max(rss / observation_count, _EPSILON)
     return float(
         observation_count * np.log(scaled_rss)
@@ -107,28 +124,66 @@ def _bic(
     )
 
 
-def _segment_metrics(log_prices: np.ndarray) -> dict[str, float | None]:
-    slope, r2, _ = _linear_fit(log_prices)
-    log_returns = np.diff(log_prices)
-    intervals = len(log_prices) - 1
-    actual_return = float(log_prices[-1] - log_prices[0])
-    fitted_return = float(slope * intervals)
+def _linearity_r2(actual: np.ndarray, fitted: np.ndarray) -> float:
+    residuals = actual - fitted
+    rss = float(np.dot(residuals, residuals))
+    centered = actual - float(np.mean(actual))
+    total = float(np.dot(centered, centered))
+    if total <= _EPSILON:
+        return 1.0 if rss <= _EPSILON else 0.0
+    return float(np.clip(1.0 - rss / total, 0.0, 1.0))
+
+
+def _segment_metrics(
+    log_prices: np.ndarray,
+    fitted: np.ndarray,
+    slope: float,
+    start: int,
+    end: int,
+    window: pd.DataFrame,
+) -> dict[str, Any]:
+    # A later half-open segment owns its incoming boundary return.
+    anchor = start if start == 0 else start - 1
+    actual_segment = log_prices[anchor:end]
+    fitted_segment = fitted[anchor:end]
+    log_returns = np.diff(actual_segment)
+    intervals = len(log_returns)
+    actual_return = float(actual_segment[-1] - actual_segment[0])
+    fitted_return = float(fitted_segment[-1] - fitted_segment[0])
     total_path = float(np.abs(log_returns).sum())
     efficiency = 0.0 if total_path <= _EPSILON else abs(actual_return) / total_path
     volatility = float(np.std(log_returns, ddof=1)) if len(log_returns) >= 2 else None
     if volatility is not None and volatility <= _EPSILON:
         volatility = None
     vol_adjusted = None
-    if volatility is not None:
+    if volatility is not None and intervals > 0:
         vol_adjusted = float(slope * np.sqrt(intervals) / volatility)
+
+    largest_move = None
+    largest_move_date = None
+    largest_move_bar_index = None
+    largest_move_path_share = None
+    if log_returns.size:
+        move_offset = int(np.argmax(np.abs(log_returns)))
+        largest_move = float(log_returns[move_offset])
+        largest_move_bar_index = anchor + move_offset + 1
+        largest_move_date = window.index[largest_move_bar_index].date()
+        largest_move_path_share = (
+            0.0 if total_path <= _EPSILON else abs(largest_move) / total_path
+        )
+
     return {
-        "log_slope_per_bar": slope,
-        "linearity_r2": r2,
+        "log_slope_per_bar": float(slope),
+        "linearity_r2": _linearity_r2(actual_segment, fitted_segment),
         "fitted_log_return": fitted_return,
         "actual_log_return": actual_return,
         "realized_volatility_daily": volatility,
         "vol_adjusted_trend": vol_adjusted,
         "efficiency_ratio": float(np.clip(efficiency, 0.0, 1.0)),
+        "largest_move_log_return": largest_move,
+        "largest_move_date": largest_move_date,
+        "largest_move_bar_index": largest_move_bar_index,
+        "largest_move_path_share": largest_move_path_share,
     }
 
 
@@ -140,7 +195,7 @@ def compute_adaptive_segmentation(
     max_segments: int = 4,
     bic_penalty_multiplier: float = 3.0,
 ) -> tuple[dict[str, Any] | None, list[dict[str, Any]]]:
-    """Select an exact piecewise log-linear segmentation using BIC."""
+    """Select an exact continuous piecewise log-linear OLS fit using BIC."""
     if (
         df.empty
         or "close" not in df
@@ -158,29 +213,32 @@ def compute_adaptive_segmentation(
         return None, []
 
     log_prices = np.log(prices)
-    costs = _segment_costs(log_prices, min_segment_bars)
-    candidates: list[tuple[float, int, list[int], float]] = []
+    candidates: list[
+        tuple[float, int, tuple[int, ...], np.ndarray, np.ndarray, float]
+    ] = []
     feasible_max = min(max_segments, lookback_bars // min_segment_bars)
     for segment_count in range(1, feasible_max + 1):
-        result = _optimal_boundaries(costs, segment_count, min_segment_bars)
+        result = _best_boundaries(log_prices, segment_count, min_segment_bars)
         if result is None:
             continue
-        boundaries, rss = result
+        boundaries, fitted, slopes, rss = result
         candidates.append(
             (
                 _bic(lookback_bars, rss, segment_count, bic_penalty_multiplier),
                 segment_count,
                 boundaries,
+                fitted,
+                slopes,
                 rss,
             )
         )
     if not candidates:
         return None, []
 
-    selected_bic, segment_count, boundaries, selected_rss = min(
-        candidates, key=lambda candidate: (candidate[0], candidate[1])
+    selected_bic, segment_count, boundaries, fitted, slopes, selected_rss = min(
+        candidates, key=lambda candidate: (candidate[0], candidate[1], candidate[2])
     )
-    single_bic, _, _, single_rss = candidates[0]
+    single_bic, _, _, _, _, single_rss = candidates[0]
     latest_date: date = window.index[-1].date()
     summary = {
         "symbol": symbol,
@@ -203,7 +261,6 @@ def compute_adaptive_segmentation(
 
     segments: list[dict[str, Any]] = []
     for segment_index, (start, end) in enumerate(zip(boundaries[:-1], boundaries[1:])):
-        segment_logs = log_prices[start:end]
         segments.append(
             {
                 "symbol": symbol,
@@ -215,7 +272,14 @@ def compute_adaptive_segmentation(
                 "start_bar_index": start,
                 "end_bar_index": end - 1,
                 "observation_count": end - start,
-                **_segment_metrics(segment_logs),
+                **_segment_metrics(
+                    log_prices,
+                    fitted,
+                    float(slopes[segment_index]),
+                    start,
+                    end,
+                    window,
+                ),
                 "method": _METHOD,
                 "calculation_version": _CALCULATION_VERSION,
             }
@@ -248,3 +312,29 @@ def compute_adaptive_trend_experiment(
             summaries.append(summary)
             segments.extend(rows)
     return summaries, segments
+
+
+def reconstruct_adaptive_fit(
+    df: pd.DataFrame,
+    lookback_bars: int,
+    segments: list[dict[str, Any]],
+) -> pd.DataFrame:
+    """Reconstruct fitted values for diagnostics without changing persisted rows."""
+    if not segments or len(df) < lookback_bars or "close" not in df:
+        return pd.DataFrame()
+
+    window = df.iloc[-lookback_bars:]
+    log_prices = np.log(window["close"].to_numpy(dtype=float))
+    ordered = sorted(segments, key=lambda row: int(row["segment_index"]))
+    boundaries = (0, *(int(row["start_bar_index"]) for row in ordered[1:]), lookback_bars)
+    _, fitted, _, _ = _fit_continuous_piecewise(log_prices, boundaries)
+    return pd.DataFrame(
+        {
+            "close": np.exp(log_prices),
+            "log_close": log_prices,
+            "fitted_close": np.exp(fitted),
+            "fitted_log_close": fitted,
+            "residual_log": log_prices - fitted,
+        },
+        index=window.index,
+    )

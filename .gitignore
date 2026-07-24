@@ -11,3 +11,4 @@ dist/
 logs/
 *.log
 *.pid
+artifacts/adaptive_trend_validation/

@@ -135,10 +135,21 @@ CREATE TABLE IF NOT EXISTS trend_segment_daily (
     realized_volatility_daily    FLOAT,
     vol_adjusted_trend           FLOAT,
     efficiency_ratio             FLOAT,
+    largest_move_log_return      FLOAT,
+    largest_move_date            DATE,
+    largest_move_bar_index       INT,
+    largest_move_path_share      FLOAT,
     method                       TEXT NOT NULL,
     calculation_version          TEXT NOT NULL,
     PRIMARY KEY (symbol, date, lookback_bars, segment_index)
 );
+"""
+
+_ALTER_TREND_SEGMENT_DAILY = """
+ALTER TABLE trend_segment_daily ADD COLUMN IF NOT EXISTS largest_move_log_return FLOAT;
+ALTER TABLE trend_segment_daily ADD COLUMN IF NOT EXISTS largest_move_date DATE;
+ALTER TABLE trend_segment_daily ADD COLUMN IF NOT EXISTS largest_move_bar_index INT;
+ALTER TABLE trend_segment_daily ADD COLUMN IF NOT EXISTS largest_move_path_share FLOAT;
 """
 
 _CREATE_TREND_SEGMENT_DAILY_IDX = """
@@ -146,6 +157,51 @@ CREATE INDEX IF NOT EXISTS trend_segment_daily_date_lookback_idx
     ON trend_segment_daily (date DESC, lookback_bars);
 CREATE INDEX IF NOT EXISTS trend_segment_daily_symbol_date_idx
     ON trend_segment_daily (symbol, date DESC);
+"""
+
+
+_CREATE_TREND_PATTERN_DAILY = """
+CREATE TABLE IF NOT EXISTS trend_pattern_daily (
+    symbol                              TEXT NOT NULL,
+    date                                DATE NOT NULL,
+    lookback_bars                       INT  NOT NULL,
+    regime                              TEXT NOT NULL,
+    directional_bias                    TEXT NOT NULL,
+    path_structure                      TEXT NOT NULL,
+    terminal_state                      TEXT NOT NULL,
+    pattern                             TEXT NOT NULL,
+    pattern_confidence                  FLOAT NOT NULL,
+    classification_reason               TEXT NOT NULL,
+    direction_sequence                  TEXT NOT NULL,
+    segment_count                       INT  NOT NULL,
+    net_fitted_log_return               FLOAT,
+    gross_fitted_log_return             FLOAT,
+    net_to_gross_ratio                  FLOAT,
+    latest_segment_direction            TEXT,
+    latest_segment_log_slope            FLOAT,
+    latest_segment_fitted_log_return     FLOAT,
+    method                              TEXT NOT NULL,
+    calculation_version                 TEXT NOT NULL,
+    PRIMARY KEY (symbol, date, lookback_bars)
+);
+"""
+
+_ALTER_TREND_PATTERN_DAILY = """
+ALTER TABLE trend_pattern_daily
+    ADD COLUMN IF NOT EXISTS regime TEXT NOT NULL DEFAULT 'irregular';
+ALTER TABLE trend_pattern_daily
+    ADD COLUMN IF NOT EXISTS directional_bias TEXT NOT NULL DEFAULT 'neutral';
+ALTER TABLE trend_pattern_daily
+    ADD COLUMN IF NOT EXISTS path_structure TEXT NOT NULL DEFAULT 'mixed';
+ALTER TABLE trend_pattern_daily
+    ADD COLUMN IF NOT EXISTS terminal_state TEXT NOT NULL DEFAULT 'flat';
+"""
+
+_CREATE_TREND_PATTERN_DAILY_IDX = """
+CREATE INDEX IF NOT EXISTS trend_pattern_daily_date_lookback_pattern_idx
+    ON trend_pattern_daily (date DESC, lookback_bars, pattern);
+CREATE INDEX IF NOT EXISTS trend_pattern_daily_symbol_date_idx
+    ON trend_pattern_daily (symbol, date DESC);
 """
 
 
@@ -186,7 +242,11 @@ def init_schema() -> None:
         _execute_statements(conn, _ALTER_TREND_SEGMENTATION_DAILY)
         _execute_statements(conn, _CREATE_TREND_SEGMENTATION_DAILY_IDX)
         conn.execute(_CREATE_TREND_SEGMENT_DAILY)
+        _execute_statements(conn, _ALTER_TREND_SEGMENT_DAILY)
         _execute_statements(conn, _CREATE_TREND_SEGMENT_DAILY_IDX)
+        conn.execute(_CREATE_TREND_PATTERN_DAILY)
+        _execute_statements(conn, _ALTER_TREND_PATTERN_DAILY)
+        _execute_statements(conn, _CREATE_TREND_PATTERN_DAILY_IDX)
         conn.execute(_CREATE_SECTOR_HEAT_DAILY)
         _execute_statements(conn, _CREATE_SECTOR_HEAT_DAILY_IDX)
         conn.commit()

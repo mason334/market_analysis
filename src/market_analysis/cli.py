@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import atexit
 from datetime import date
+from pathlib import Path
 
 import structlog
 import typer
@@ -72,6 +73,60 @@ def run_trend_segmentation_experiment() -> None:
     init_schema()
     total = run_adaptive_trend_experiment_pipeline()
     typer.echo(f"Done. {total} symbols written to adaptive trend experiment tables.")
+
+
+@app.command("validate-trend-segmentation")
+def validate_trend_segmentation(
+    symbols: str = typer.Option(
+        "",
+        "--symbols",
+        help="Comma-separated symbols; defaults to validation.adaptive_trend.symbols.",
+    ),
+    target_date: str = typer.Option(
+        str(date.today()),
+        "--date",
+        "-d",
+        help="Latest validation anchor date (YYYY-MM-DD).",
+    ),
+    output_dir: Path | None = typer.Option(
+        None,
+        "--output-dir",
+        help=(
+            "Report directory; defaults to "
+            "artifacts/adaptive_trend_validation/<date>/<run_timestamp>."
+        ),
+    ),
+    full_grid: bool = typer.Option(
+        False,
+        "--full-grid",
+        help="Run the complete Cartesian parameter grid instead of staged screening.",
+    ),
+) -> None:
+    """Generate a read-only validation report with parameter-level progress."""
+    from market_analysis.pipeline.validate_adaptive_trend import (
+        run_adaptive_trend_validation,
+    )
+
+    selected_symbols = [value.strip() for value in symbols.split(",") if value.strip()]
+    report = run_adaptive_trend_validation(
+        symbols=selected_symbols or None,
+        target_date=date.fromisoformat(target_date),
+        output_dir=output_dir,
+        full_grid=full_grid,
+        show_progress=True,
+    )
+    typer.echo(f"Validation report written to {report}")
+
+
+@app.command("run-trend-pattern-analysis")
+def run_trend_pattern_analysis() -> None:
+    """Classify the latest adaptive trend segmentation snapshot."""
+    from market_analysis.db.schema import init_schema
+    from market_analysis.pipeline.run_trend_patterns import run_trend_pattern_pipeline
+
+    init_schema()
+    total = run_trend_pattern_pipeline()
+    typer.echo(f"Done. {total} long-window trend patterns written.")
 
 
 @app.command("show")

@@ -9,8 +9,10 @@ from market_analysis.indicators.support_resistance import (
     support_resistance,
 )
 from market_analysis.indicators.trend import compute_trend_indicators
+from market_analysis.indicators.trend_pattern import classify_trend_patterns
 
 __all__ = [
+    "classify_trend_patterns",
     "compute_adaptive_trend_experiment",
     "compute_raw_swings",
     "compute_sector_heat",

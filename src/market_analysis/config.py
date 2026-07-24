@@ -37,6 +37,9 @@ class Settings(BaseSettings):
     # Pipeline
     pipeline: dict[str, Any] = Field(default_factory=dict)
 
+    # Read-only validation/reporting workflows.
+    validation: dict[str, Any] = Field(default_factory=dict)
+
     @property
     def dsn(self) -> str:
         return (

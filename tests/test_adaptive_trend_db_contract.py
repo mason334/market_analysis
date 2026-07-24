@@ -42,8 +42,8 @@ def _summary(lookback: int = 40) -> dict[str, Any]:
         "min_segment_bars": 5,
         "max_segments": 4,
         "bic_penalty_multiplier": 3.0,
-        "method": "piecewise_log_linear_dp_bic",
-        "calculation_version": "adaptive_trend_v1",
+        "method": "continuous_piecewise_log_linear_exhaustive_bic",
+        "calculation_version": "adaptive_trend_v2",
     }
 
 
@@ -65,8 +65,12 @@ def _segment() -> dict[str, Any]:
         "realized_volatility_daily": 0.02,
         "vol_adjusted_trend": -2.1,
         "efficiency_ratio": 0.8,
-        "method": "piecewise_log_linear_dp_bic",
-        "calculation_version": "adaptive_trend_v1",
+        "largest_move_log_return": -0.04,
+        "largest_move_date": date(2026, 6, 2),
+        "largest_move_bar_index": 9,
+        "largest_move_path_share": 0.2,
+        "method": "continuous_piecewise_log_linear_exhaustive_bic",
+        "calculation_version": "adaptive_trend_v2",
     }
 
 
@@ -90,7 +94,7 @@ def test_adaptive_upsert_replaces_segments_and_writes_both_tables(monkeypatch) -
         if "INSERT INTO trend_segment_daily" in execution[0]
     )
     assert len(summary_execution[1] or ()) == 16
-    assert len(segment_execution[1] or ()) == 18
+    assert len(segment_execution[1] or ()) == 22
 
 
 def test_adaptive_upsert_rejects_mixed_snapshots(monkeypatch) -> None:
@@ -113,5 +117,6 @@ def test_schema_creates_adaptive_summary_and_detail_tables(monkeypatch) -> None:
     assert connection.committed
     assert "CREATE TABLE IF NOT EXISTS trend_segmentation_daily" in statements
     assert "CREATE TABLE IF NOT EXISTS trend_segment_daily" in statements
+    assert "ADD COLUMN IF NOT EXISTS largest_move_log_return" in statements
     assert "trend_segmentation_daily_date_lookback_idx" in statements
     assert "trend_segment_daily_symbol_date_idx" in statements

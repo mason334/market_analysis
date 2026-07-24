@@ -138,11 +138,13 @@ INSERT INTO trend_segment_daily (
     start_date, end_date, start_bar_index, end_bar_index, observation_count,
     log_slope_per_bar, linearity_r2, fitted_log_return, actual_log_return,
     realized_volatility_daily, vol_adjusted_trend, efficiency_ratio,
+    largest_move_log_return, largest_move_date, largest_move_bar_index,
+    largest_move_path_share,
     method, calculation_version
 )
 VALUES (
     %s, %s, %s, %s, %s, %s, %s, %s, %s,
-    %s, %s, %s, %s, %s, %s, %s, %s, %s
+    %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s
 )
 ON CONFLICT (symbol, date, lookback_bars, segment_index) DO UPDATE SET
     start_date                = EXCLUDED.start_date,
@@ -157,6 +159,10 @@ ON CONFLICT (symbol, date, lookback_bars, segment_index) DO UPDATE SET
     realized_volatility_daily = EXCLUDED.realized_volatility_daily,
     vol_adjusted_trend        = EXCLUDED.vol_adjusted_trend,
     efficiency_ratio          = EXCLUDED.efficiency_ratio,
+    largest_move_log_return   = EXCLUDED.largest_move_log_return,
+    largest_move_date         = EXCLUDED.largest_move_date,
+    largest_move_bar_index    = EXCLUDED.largest_move_bar_index,
+    largest_move_path_share   = EXCLUDED.largest_move_path_share,
     method                    = EXCLUDED.method,
     calculation_version       = EXCLUDED.calculation_version
 """
@@ -173,6 +179,88 @@ WHERE symbol = %s AND date = %s AND NOT (lookback_bars = ANY(%s))
 
 _DELETE_UNCONFIGURED_SEGMENTATION_LOOKBACKS = """
 DELETE FROM trend_segmentation_daily
+WHERE symbol = %s AND date = %s AND NOT (lookback_bars = ANY(%s))
+"""
+
+_TREND_SEGMENTATION_COLS = [
+    "symbol", "date", "lookback_bars", "observation_count",
+    "segment_count", "change_point_count", "selected_rss", "single_segment_rss",
+    "selected_bic", "single_segment_bic", "bic_improvement", "min_segment_bars",
+    "max_segments", "bic_penalty_multiplier", "method", "calculation_version",
+]
+
+_TREND_SEGMENT_COLS = [
+    "symbol", "date", "lookback_bars", "segment_index", "start_date", "end_date",
+    "start_bar_index", "end_bar_index", "observation_count", "log_slope_per_bar",
+    "linearity_r2", "fitted_log_return", "actual_log_return",
+    "realized_volatility_daily", "vol_adjusted_trend", "efficiency_ratio",
+    "largest_move_log_return", "largest_move_date", "largest_move_bar_index",
+    "largest_move_path_share", "method", "calculation_version",
+]
+
+_FETCH_LATEST_TREND_SEGMENTATION_DATE = """
+SELECT MAX(date) FROM trend_segmentation_daily
+"""
+
+_FETCH_TREND_SEGMENTATION_SNAPSHOT = """
+SELECT symbol, date, lookback_bars, observation_count,
+       segment_count, change_point_count, selected_rss, single_segment_rss,
+       selected_bic, single_segment_bic, bic_improvement, min_segment_bars,
+       max_segments, bic_penalty_multiplier, method, calculation_version
+FROM trend_segmentation_daily
+WHERE date = %s
+ORDER BY symbol, lookback_bars
+"""
+
+_FETCH_TREND_SEGMENT_SNAPSHOT = """
+SELECT symbol, date, lookback_bars, segment_index, start_date, end_date,
+       start_bar_index, end_bar_index, observation_count, log_slope_per_bar,
+       linearity_r2, fitted_log_return, actual_log_return,
+       realized_volatility_daily, vol_adjusted_trend, efficiency_ratio,
+       largest_move_log_return, largest_move_date, largest_move_bar_index,
+       largest_move_path_share,
+       method, calculation_version
+FROM trend_segment_daily
+WHERE date = %s
+ORDER BY symbol, lookback_bars, segment_index
+"""
+
+_UPSERT_TREND_PATTERN_DAILY = """
+INSERT INTO trend_pattern_daily (
+    symbol, date, lookback_bars,
+    regime, directional_bias, path_structure, terminal_state,
+    pattern, pattern_confidence,
+    classification_reason, direction_sequence, segment_count,
+    net_fitted_log_return, gross_fitted_log_return, net_to_gross_ratio,
+    latest_segment_direction, latest_segment_log_slope,
+    latest_segment_fitted_log_return, method, calculation_version
+)
+VALUES (
+    %s, %s, %s, %s, %s, %s, %s, %s, %s, %s,
+    %s, %s, %s, %s, %s, %s, %s, %s, %s, %s
+)
+ON CONFLICT (symbol, date, lookback_bars) DO UPDATE SET
+    regime                           = EXCLUDED.regime,
+    directional_bias                = EXCLUDED.directional_bias,
+    path_structure                  = EXCLUDED.path_structure,
+    terminal_state                  = EXCLUDED.terminal_state,
+    pattern                          = EXCLUDED.pattern,
+    pattern_confidence               = EXCLUDED.pattern_confidence,
+    classification_reason            = EXCLUDED.classification_reason,
+    direction_sequence               = EXCLUDED.direction_sequence,
+    segment_count                    = EXCLUDED.segment_count,
+    net_fitted_log_return            = EXCLUDED.net_fitted_log_return,
+    gross_fitted_log_return          = EXCLUDED.gross_fitted_log_return,
+    net_to_gross_ratio               = EXCLUDED.net_to_gross_ratio,
+    latest_segment_direction         = EXCLUDED.latest_segment_direction,
+    latest_segment_log_slope         = EXCLUDED.latest_segment_log_slope,
+    latest_segment_fitted_log_return = EXCLUDED.latest_segment_fitted_log_return,
+    method                           = EXCLUDED.method,
+    calculation_version              = EXCLUDED.calculation_version
+"""
+
+_DELETE_UNCONFIGURED_PATTERN_LOOKBACKS = """
+DELETE FROM trend_pattern_daily
 WHERE symbol = %s AND date = %s AND NOT (lookback_bars = ANY(%s))
 """
 
@@ -416,7 +504,62 @@ def upsert_trend_segmentation_daily(
                     row.get("realized_volatility_daily"),
                     row.get("vol_adjusted_trend"),
                     row.get("efficiency_ratio"),
+                    row.get("largest_move_log_return"),
+                    row.get("largest_move_date"),
+                    row.get("largest_move_bar_index"),
+                    row.get("largest_move_path_share"),
                     row["method"],
+                    row["calculation_version"],
+                ),
+            )
+        conn.commit()
+
+
+def fetch_latest_trend_segmentation_date() -> date | None:
+    with get_conn() as conn:
+        row = conn.execute(_FETCH_LATEST_TREND_SEGMENTATION_DATE).fetchone()
+    return row[0] if row and row[0] is not None else None
+
+
+def fetch_trend_segmentation_snapshot(target_date: date) -> list[dict[str, Any]]:
+    with get_conn() as conn:
+        rows = conn.execute(_FETCH_TREND_SEGMENTATION_SNAPSHOT, (target_date,)).fetchall()
+    return [dict(zip(_TREND_SEGMENTATION_COLS, row)) for row in rows]
+
+
+def fetch_trend_segment_snapshot(target_date: date) -> list[dict[str, Any]]:
+    with get_conn() as conn:
+        rows = conn.execute(_FETCH_TREND_SEGMENT_SNAPSHOT, (target_date,)).fetchall()
+    return [dict(zip(_TREND_SEGMENT_COLS, row)) for row in rows]
+
+
+def upsert_trend_pattern_daily(rows: list[dict[str, Any]]) -> None:
+    if not rows:
+        return
+    lookbacks_by_snapshot: dict[tuple[str, date], list[int]] = {}
+    for row in rows:
+        key = (str(row["symbol"]), row["date"])
+        lookbacks_by_snapshot.setdefault(key, []).append(int(row["lookback_bars"]))
+
+    with get_conn() as conn:
+        for (symbol, snapshot_date), lookbacks in lookbacks_by_snapshot.items():
+            conn.execute(
+                _DELETE_UNCONFIGURED_PATTERN_LOOKBACKS,
+                (symbol, snapshot_date, lookbacks),
+            )
+        for row in rows:
+            conn.execute(
+                _UPSERT_TREND_PATTERN_DAILY,
+                (
+                    row["symbol"], row["date"], row["lookback_bars"], row["regime"],
+                    row["directional_bias"], row["path_structure"],
+                    row["terminal_state"], row["pattern"],
+                    row["pattern_confidence"], row["classification_reason"],
+                    row["direction_sequence"], row["segment_count"],
+                    row.get("net_fitted_log_return"), row.get("gross_fitted_log_return"),
+                    row.get("net_to_gross_ratio"), row.get("latest_segment_direction"),
+                    row.get("latest_segment_log_slope"),
+                    row.get("latest_segment_fitted_log_return"), row["method"],
                     row["calculation_version"],
                 ),
             )

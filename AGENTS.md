@@ -62,10 +62,12 @@ market_analysis/
 │   │   ├── support_resistance.py     # 支撑/阻力指标计算
 │   │   ├── trend.py                  # 趋势指标计算
 │   │   ├── adaptive_trend.py         # 自适应分段实验（纯计算）
+│   │   ├── trend_pattern.py          # 长窗口趋势形态分类与质量统计
 │   │   └── sector_heat.py            # 板块热度指标计算
 │   ├── pipeline/
 │   │   ├── run_indicators.py         # 每日 symbol 级指标批量执行
 │   │   ├── run_adaptive_trend_experiment.py # 独立自适应分段实验
+│   │   ├── run_trend_patterns.py     # 基于已持久化分段的形态分类
 │   │   └── run_sector_heat.py        # 每日板块热度批量执行
 │   │   └── archive/                  # 历史 pipeline，不参与当前 CLI 主流程
 │   ├── strategies/
@@ -90,6 +92,7 @@ market_analysis/
 - `trend_daily`：趋势快照，每 `symbol/date/window_label` 一行。
 - `trend_segmentation_daily`：自适应分段模型选择摘要，每 `symbol/date/lookback_bars` 一行。
 - `trend_segment_daily`：自适应分段明细，每 `symbol/date/lookback_bars/segment_index` 一行。
+- `trend_pattern_daily`：长窗口形态分类，每 `symbol/date/lookback_bars` 一行。
 - `sector_heat_daily`：板块热度快照，每 `universe_ticker/date` 一行。
 
 `queries.py` 中的快照查询函数从 `support_resistance_daily` + `trend_daily` 拼出宽表结果，不再回退到历史兼容表。
@@ -174,9 +177,31 @@ CREATE INDEX IF NOT EXISTS trend_daily_symbol_date_idx
 
 `trend_segmentation_daily` 保存 40/60 bar 实验窗口的分段数、RSS、BIC 与模型参数；
 `trend_segment_daily` 保存每一段的日期边界、bar 索引、log slope、R²、return、波动率、
-波动率调整趋势和路径效率。算法口径为 `adaptive_trend_v1`，方法为
-`piecewise_log_linear_dp_bic`。BIC 复杂度惩罚乘数由 `bic_penalty_multiplier` 配置，默认 3.0，
-并随摘要持久化。实验由独立 CLI 触发，不属于 `run-indicators` 固定窗口流程。
+波动率调整趋势、路径效率，以及最大单日 log return、发生日期/bar 索引和绝对路径占比。
+算法对合法断点组合执行全局连续分段最小二乘，拟合路径在断点处连续但不强制经过实际
+端点；口径为 `adaptive_trend_v2`，方法为
+`continuous_piecewise_log_linear_exhaustive_bic`。分段继续使用 `[start, end)`，后一段
+包含 `start - 1 -> start` 的进入收益，因此各段实际 log return 之和等于整个窗口实际
+log return。BIC 复杂度惩罚乘数由 `bic_penalty_multiplier` 配置，默认 3.0，并随摘要
+持久化。实验由独立 CLI 触发，不属于 `run-indicators` 固定窗口流程。
+
+### trend_pattern_daily
+
+阶段 C 基于已持久化的自适应分段，以 `trend_pattern_v3` 口径对 40/60 bar 路径做分层描述：
+
+- `regime`：`trending`、`ranging`、`transitioning` 或 `irregular`。
+- `directional_bias`：按窗口净拟合收益与净/总运动比例得到 `up`、`down` 或 `neutral`。
+- `path_structure`：`flat`、`single_leg`、`pullback`、`resumption`、`reversal`、
+  `double_test`、`contracting`、`expanding`、`stable_range`、`multiple_pullbacks`、
+  `complex_reversal` 或 `mixed`。
+- `terminal_state`：压缩后最后一段的 `up`、`down` 或 `flat`。
+- `pattern`：由上述层次派生的便捷标签，包括趋势、回撤/恢复、反转后横盘、近似双顶/双底、
+  收敛/扩张区间、复杂反转和 `irregular_path` 等。
+
+`pattern_confidence` 是描述性规则分数而非概率：趋势类使用 `net_to_gross_ratio`，区间类使用
+`1 - net_to_gross_ratio`，反转类使用上下运动平衡度，近似双重测试再结合极值相似度。
+形态分布、regime 分布、主导形态比例和 `irregular_path` 比例仅输出质检日志，不另建质量
+统计表，也不创建 `market_indicator_snapshot_v2`。
 
 ### sector_heat_daily
 
@@ -245,6 +270,9 @@ market-analysis run-sector-heat
 # 运行自适应趋势分段实验，写入两张独立分段表
 market-analysis run-trend-segmentation-experiment
 
+# 基于最新分段快照计算长窗口形态
+market-analysis run-trend-pattern-analysis
+
 # 查看指定日期指标快照
 market-analysis show --date 2026-05-29
 
@@ -307,7 +335,7 @@ cron 建议顺序：
 
 - 数据库表、字段、索引、主键、唯一约束。
 - `support_resistance_daily`、`trend_daily`、`trend_segmentation_daily`、
-  `trend_segment_daily`、`sector_heat_daily` 的字段含义。
+  `trend_segment_daily`、`trend_pattern_daily`、`sector_heat_daily` 的字段含义。
 - `queries.py` 中供下游使用的返回列、列名、排序、空值语义。
 - CLI 命令名称或输出格式。
 - 下游可能依赖的配置键、参数默认值或数据语义。

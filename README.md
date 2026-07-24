@@ -12,6 +12,8 @@ Daily symbol-level analysis is now split by responsibility:
 - `trend_daily` stores one row per symbol/date/trend window.
 - `trend_segmentation_daily` and `trend_segment_daily` store the separate adaptive
   segmentation experiment summary and segment details.
+- `trend_pattern_daily` stores layered regime/bias/path/terminal-state descriptors and one
+  derived long-window pattern per symbol/date/lookback.
 - `sector_heat_daily` remains unchanged and independent from symbol indicators.
 
 Calculation modules now live under `src/market_analysis/indicators/`:
@@ -115,6 +117,7 @@ PostgreSQL (localhost:5432)
     ├── trend_daily                 # 固定窗口趋势快照
     ├── trend_segmentation_daily    # 自适应分段模型选择摘要
     ├── trend_segment_daily         # 自适应趋势分段明细
+    ├── trend_pattern_daily         # 长窗口趋势形态分类
     └── sector_heat_daily           # 板块热度快照（每 universe_ticker 每日一行）
 ```
 
@@ -176,16 +179,35 @@ log 口径，不提前乘 100 或舍入；百分比展示由下游转换。
 
 ### 自适应趋势分段实验
 
-阶段 B 使用 40/60 bar 长窗口，在 log price 上执行受限精确动态规划。算法比较
-1 至 `max_segments` 个分段的最小 RSS，并使用 BIC 选择分段数。每一段不少于
-`min_segment_bars`，因此拐点不需要落在固定窗口边界上。考虑到价格路径的随机游走特征，
-实验使用可配置的 `bic_penalty_multiplier`（默认 3.0）提高复杂度惩罚，并在汇总表中保存该参数。
+阶段 B 使用 40/60 bar 长窗口，在 log price 上对所有合法断点组合执行全局连续分段
+最小二乘。模型使用 linear-spline hinge basis，允许断点前后斜率变化，但要求拟合路径在
+断点处连续；拟合线不强制经过实际端点。算法比较 1 至 `max_segments` 个分段的全局最小
+RSS，并使用 BIC 选择分段数。每一段不少于 `min_segment_bars`，因此拐点不需要落在固定
+窗口边界上。实验使用可配置的 `bic_penalty_multiplier`（默认 3.0）提高复杂度惩罚，并在
+汇总表中保存该参数。
+
+分段仍使用 `[start, end)` 边界；后一段的路径指标包含 `start - 1 -> start` 的进入收益，
+保证各段 `actual_log_return` 之和等于整个窗口的实际 log return。每段另存最大单日变化
+`largest_move_log_return`、发生日期/bar 索引及其占该段绝对路径的比例，便于区分持续趋势
+与单日大幅移动。
 
 - `trend_segmentation_daily`：每个 `symbol/date/lookback_bars` 的模型选择摘要。
 - `trend_segment_daily`：每个自适应段的日期边界和段内趋势指标。
-- 方法：`piecewise_log_linear_dp_bic`。
-- 版本：`adaptive_trend_v1`。
+- 方法：`continuous_piecewise_log_linear_exhaustive_bic`。
+- 版本：`adaptive_trend_v2`。
 - 独立实验命令不会修改 `trend_daily`，也不会由 `run-indicators` 自动触发。
+
+### 长窗口趋势形态
+
+`run-trend-pattern-analysis` 读取最新的自适应分段快照，并写入 `trend_pattern_daily`。
+`trend_pattern_v3` 将结果拆成 `regime`、`directional_bias`、`path_structure` 和
+`terminal_state` 四层，并派生 `pattern` 便捷标签。当前覆盖单边趋势、普通回撤、趋势恢复、
+多次回撤、顶部/底部反转、反转后横盘、近似双顶/双底、收敛/扩张区间、复杂反转和
+`irregular_path`；暂不实现头肩等需要更多极值约束的复杂形态。
+
+`pattern_confidence` 是简单的描述性规则分数，不代表统计概率。每次运行会在日志中输出各
+lookback 的 pattern/regime 分布、主导形态比例和 `irregular_path` 比例作为质检；这些质量
+统计不写入数据库。本阶段不创建 `market_indicator_snapshot_v2`。
 
 ### sector_heat_daily（板块热度快照）
 
@@ -370,7 +392,39 @@ market-analysis run-sector-heat
 
 # 自适应趋势分段实验（独立于固定窗口生产流程）
 market-analysis run-trend-segmentation-experiment
+
+# 自动扫描参数并生成交互式验证报告（只读 market_data，不写指标表）
+market-analysis validate-trend-segmentation --date 2026-07-17
+
+# 指定样本；默认执行分阶段筛选，--full-grid 可运行完整笛卡尔积
+market-analysis validate-trend-segmentation `
+  --symbols SPY,QQQ,IWM,TLT,GLD,AAPL,NVDA,TSLA `
+  --date 2026-07-17
+
+# 基于最新自适应分段生成长窗口形态
+market-analysis run-trend-pattern-analysis
 ```
+
+验证参数网格、历史截面偏移和报告中展示的候选参数数量配置在
+`validation.adaptive_trend`。默认流程先扫描 BIC 惩罚，再扫描最短分段长度，最后对候选
+`max_segments` 组合执行多历史截面稳定性复验。结果写入
+`artifacts/adaptive_trend_validation/<date>/run_<timestamp>/`：每次运行创建独立时间戳目录，
+不会覆盖同一天的旧报告；目录中的 `index.html` 包含交互式价格/拟合/残差图，
+并同时输出 `summary.csv`、`segments.csv` 和 `parameter_comparison.csv`。拟合质量与复杂度分数用于排序
+复核优先级，不会自动修改生产 `adaptive_trend` 参数。
+
+命令行按参数组显示 `bic_scan`、`minimum_scan`、`stability_review` 或 `full_grid` 进度条。
+`anchor_offsets` 定义多个历史基准截面，每个基准只与
+`base + anchor_comparison_step_bars` 组成局部比较对；默认 step 为 2 bars，不再直接比较
+相差 10 bars 的相邻基准截面。`breakpoint_tolerance_bars` 是稳定性诊断使用的主断点匹配容差，
+`breakpoint_tolerance_sensitivity_bars` 只生成容差敏感度列，不进入模型 `parameter_key`。
+`local_breakpoint_set_stability` 仅比较每对窗口共同合法断点区域中的集合，并从共同区域
+两端排除当前 `min_segment_bars`；两个截面都没有可比较断点时不会自动获得满分。报告使用
+`fit_complexity_score` 通过统一公式综合 RSS 改善、段内线性度、最大分段数命中、接近最短长度
+分段和单日变化主导风险。分阶段初筛和最终历史复验都按该分数排名；局部断点集合稳定性及其
+证据数量继续独立展示，但不作为排名资格、评分项或排序条件。
+HTML 的 Parameter comparison 标题下提供可折叠字段说明，逐项解释用途、计算公式和解读
+限制。
 
 ### 5. 查看 SR 快照
 
