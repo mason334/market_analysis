@@ -67,6 +67,12 @@ indicators:
     # 只有 confirmation_strength >= 1，且摆动相似度同时达标，才识别为 double test。
     double_test_confirmation_ratio: 0.50
 
+  trend_pattern_v4:
+    # 第一阶段只做 1～4 effective legs 的方向无关结构分类。
+    # 连续两个同类 fitted pivot 的相对差异不超过该值时记为 retest；
+    # 超出容差后，当前 leg 振幅较小记为 short_of，较大记为 break。
+    pivot_retest_tolerance: 0.25
+
 # Backward-compatible alias for older code paths and saved prefs.
 strategies:
   support_resistance:

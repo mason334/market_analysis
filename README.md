@@ -209,6 +209,35 @@ RSS，并使用 BIC 选择分段数。每一段不少于 `min_segment_bars`，�
 lookback 的 pattern/regime 分布、主导形态比例和 `irregular_path` 比例作为质检；这些质量
 统计不写入数据库。本阶段不创建 `market_indicator_snapshot_v2`。
 
+#### trend_pattern_v4 第一阶段：方向无关结构表
+
+`trend_pattern_v4` 当前只完成第一阶段的结构编码，尚未替换生产中的
+`trend_pattern_v3`，也不写入 `trend_pattern_daily`。算法过滤近似 flat 的 segment、合并
+连续同方向 segment 得到 effective legs，并对 1～4 条 effective legs 做如下处理：
+
+第二阶段的指标定义、审核状态、未决问题和 session 交接信息统一维护在
+[`docs/trend_pattern_v4_metric_spec.md`](docs/trend_pattern_v4_metric_spec.md)。该规格在指标进入
+生产代码或数据库接口前作为设计事实来源。
+
+1. 若首腿向下，将全部 signed fitted log return 乘以 `-1`，统一成从 up 开始的方向骨架。
+2. 每增加一条腿，比较新 pivot `Pᵢ` 与前一个同类 pivot `Pᵢ₋₂`。这等价于比较当前腿与
+   前一腿的绝对振幅 `Aᵢ/Aᵢ₋₁`。
+3. 使用 `pivot_retest_tolerance` 将关系唯一分为 `short_of`、`retest`、`break`。
+   默认容差为 `0.25`，对应振幅比区间 `< 0.75`、`[0.75, 1.333…]`、`> 1.333…`。
+
+因此 n 条腿恰好有 `3ⁿ⁻¹` 个结构，1～4 条腿合计
+`1 + 3 + 9 + 27 = 40` 个互斥且完备的方向无关结构单元。结构码使用
+`L{腿数}-{关系缩写}`，其中 `S/R/B` 分别代表 `short_of/retest/break`，例如
+`L3-RB`。当前阶段刻意不映射到 double test、reversal、range 等人类名称。
+
+可运行下面的说明脚本查看单个输入的逐腿计算，并重新生成完整参考页面：
+
+```bash
+python scripts/show_trend_pattern_v4_stage1.py --legs "0.08,-0.10,0.12"
+```
+
+生成页面为 `artifacts/trend_pattern_v4_stage1.html`，包含全部 40 个结构的判定数值和示例图。
+
 ### sector_heat_daily（板块热度快照）
 
 每个 universe_ticker 每个交易日一行：
