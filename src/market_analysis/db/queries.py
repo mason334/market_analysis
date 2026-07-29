@@ -45,6 +45,18 @@ WHERE symbol = %s
 ORDER BY date
 """
 
+_FETCH_SPLIT_ADJUSTED_CLOSE_WINDOW = """
+SELECT date, close
+FROM (
+    SELECT date, close
+    FROM daily_bars_split_adjusted
+    WHERE symbol = %s AND date <= %s
+    ORDER BY date DESC
+    LIMIT %s
+) AS latest_window
+ORDER BY date
+"""
+
 _UPSERT_SUPPORT_RESISTANCE_DAILY = """
 INSERT INTO support_resistance_daily (
     symbol, date,
@@ -264,6 +276,83 @@ DELETE FROM trend_pattern_daily
 WHERE symbol = %s AND date = %s AND NOT (lookback_bars = ANY(%s))
 """
 
+_UPSERT_TREND_PATTERN_V4_DAILY = """
+INSERT INTO trend_pattern_v4_daily (
+    symbol, date, lookback_bars, observation_count,
+    source_segment_count, effective_leg_count,
+    start_direction, structure_index, structure_code,
+    net_log_return, path_efficiency, historical_volatility,
+    terminal_price_rank, terminal_price_position,
+    terminal_leg_start_position, terminal_breakout_distance_vol,
+    squared_movement_time_position, squared_movement_concentration,
+    min_abs_fitted_log_return, min_linearity_r2,
+    min_abs_vol_adjusted_trend, pivot_retest_tolerance,
+    source_segmentation_method, source_segmentation_calculation_version,
+    method, calculation_version
+)
+VALUES (
+    %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s,
+    %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s
+)
+ON CONFLICT (symbol, date, lookback_bars) DO UPDATE SET
+    observation_count                       = EXCLUDED.observation_count,
+    source_segment_count                    = EXCLUDED.source_segment_count,
+    effective_leg_count                     = EXCLUDED.effective_leg_count,
+    start_direction                         = EXCLUDED.start_direction,
+    structure_index                         = EXCLUDED.structure_index,
+    structure_code                          = EXCLUDED.structure_code,
+    net_log_return                          = EXCLUDED.net_log_return,
+    path_efficiency                         = EXCLUDED.path_efficiency,
+    historical_volatility                   = EXCLUDED.historical_volatility,
+    terminal_price_rank                     = EXCLUDED.terminal_price_rank,
+    terminal_price_position                 = EXCLUDED.terminal_price_position,
+    terminal_leg_start_position             = EXCLUDED.terminal_leg_start_position,
+    terminal_breakout_distance_vol          = EXCLUDED.terminal_breakout_distance_vol,
+    squared_movement_time_position          = EXCLUDED.squared_movement_time_position,
+    squared_movement_concentration          = EXCLUDED.squared_movement_concentration,
+    min_abs_fitted_log_return               = EXCLUDED.min_abs_fitted_log_return,
+    min_linearity_r2                        = EXCLUDED.min_linearity_r2,
+    min_abs_vol_adjusted_trend              = EXCLUDED.min_abs_vol_adjusted_trend,
+    pivot_retest_tolerance                  = EXCLUDED.pivot_retest_tolerance,
+    source_segmentation_method              = EXCLUDED.source_segmentation_method,
+    source_segmentation_calculation_version =
+        EXCLUDED.source_segmentation_calculation_version,
+    method                                  = EXCLUDED.method,
+    calculation_version                     = EXCLUDED.calculation_version
+"""
+
+_DELETE_UNCONFIGURED_PATTERN_V4_LOOKBACKS = """
+DELETE FROM trend_pattern_v4_daily
+WHERE symbol = %s AND date = %s AND NOT (lookback_bars = ANY(%s))
+"""
+
+_TREND_PATTERN_V4_COLS = [
+    "symbol", "date", "lookback_bars", "observation_count",
+    "source_segment_count", "effective_leg_count", "start_direction",
+    "structure_index", "structure_code", "net_log_return", "path_efficiency",
+    "historical_volatility", "terminal_price_rank", "terminal_price_position",
+    "terminal_leg_start_position", "terminal_breakout_distance_vol",
+    "squared_movement_time_position", "squared_movement_concentration",
+    "min_abs_fitted_log_return", "min_linearity_r2",
+    "min_abs_vol_adjusted_trend", "pivot_retest_tolerance",
+    "source_segmentation_method", "source_segmentation_calculation_version",
+    "method", "calculation_version",
+]
+
+_FETCH_TREND_PATTERN_V4_SNAPSHOT = f"""
+SELECT {", ".join(_TREND_PATTERN_V4_COLS)}
+FROM trend_pattern_v4_daily
+WHERE date = %s
+ORDER BY symbol, lookback_bars
+"""
+
+_FETCH_TREND_PATTERN_V4_FOR_SYMBOL = f"""
+SELECT {", ".join(_TREND_PATTERN_V4_COLS)}
+FROM trend_pattern_v4_daily
+WHERE symbol = %s AND date BETWEEN %s AND %s
+ORDER BY date DESC, lookback_bars
+"""
+
 _FETCH_LATEST_INDICATOR_DATE = """
 SELECT MAX(date) FROM support_resistance_daily
 """
@@ -353,6 +442,27 @@ def fetch_ohlcv(symbol: str, source: str = "") -> pd.DataFrame:
     df = pd.DataFrame(rows, columns=["date", "open", "high", "low", "close", "volume"])
     df["date"] = pd.to_datetime(df["date"])
     return df.set_index("date").sort_index()
+
+
+def fetch_split_adjusted_close_window(
+    symbol: str,
+    target_date: date,
+    observation_count: int,
+) -> pd.DataFrame:
+    """Read one exact historical close window from the market_data database."""
+    count = int(observation_count)
+    if count <= 0:
+        raise ValueError("observation_count must be positive.")
+    with get_source_conn() as conn:
+        rows = conn.execute(
+            _FETCH_SPLIT_ADJUSTED_CLOSE_WINDOW,
+            (symbol, target_date, count),
+        ).fetchall()
+    if not rows:
+        return pd.DataFrame(columns=["close"], index=pd.DatetimeIndex([], name="date"))
+    frame = pd.DataFrame(rows, columns=["date", "close"])
+    frame["date"] = pd.to_datetime(frame["date"])
+    return frame.set_index("date").sort_index()
 
 
 def upsert_support_resistance_daily(row: dict[str, Any]) -> None:
@@ -564,6 +674,74 @@ def upsert_trend_pattern_daily(rows: list[dict[str, Any]]) -> None:
                 ),
             )
         conn.commit()
+
+
+def upsert_trend_pattern_v4_daily(rows: list[dict[str, Any]]) -> None:
+    if not rows:
+        return
+    lookbacks_by_snapshot: dict[tuple[str, date], list[int]] = {}
+    for row in rows:
+        key = (str(row["symbol"]), row["date"])
+        lookbacks_by_snapshot.setdefault(key, []).append(int(row["lookback_bars"]))
+
+    with get_conn() as conn:
+        for (symbol, snapshot_date), lookbacks in lookbacks_by_snapshot.items():
+            conn.execute(
+                _DELETE_UNCONFIGURED_PATTERN_V4_LOOKBACKS,
+                (symbol, snapshot_date, lookbacks),
+            )
+        for row in rows:
+            conn.execute(
+                _UPSERT_TREND_PATTERN_V4_DAILY,
+                (
+                    row["symbol"],
+                    row["date"],
+                    row["lookback_bars"],
+                    row["observation_count"],
+                    row["source_segment_count"],
+                    row["effective_leg_count"],
+                    row.get("start_direction"),
+                    row.get("structure_index"),
+                    row.get("structure_code"),
+                    row.get("net_log_return"),
+                    row.get("path_efficiency"),
+                    row.get("historical_volatility"),
+                    row.get("terminal_price_rank"),
+                    row.get("terminal_price_position"),
+                    row.get("terminal_leg_start_position"),
+                    row.get("terminal_breakout_distance_vol"),
+                    row.get("squared_movement_time_position"),
+                    row.get("squared_movement_concentration"),
+                    row["min_abs_fitted_log_return"],
+                    row["min_linearity_r2"],
+                    row["min_abs_vol_adjusted_trend"],
+                    row["pivot_retest_tolerance"],
+                    row["source_segmentation_method"],
+                    row["source_segmentation_calculation_version"],
+                    row["method"],
+                    row["calculation_version"],
+                ),
+            )
+        conn.commit()
+
+
+def fetch_trend_pattern_v4_snapshot(target_date: date) -> list[dict[str, Any]]:
+    with get_conn() as conn:
+        rows = conn.execute(_FETCH_TREND_PATTERN_V4_SNAPSHOT, (target_date,)).fetchall()
+    return [dict(zip(_TREND_PATTERN_V4_COLS, row)) for row in rows]
+
+
+def fetch_trend_pattern_v4_for_symbol(
+    symbol: str,
+    start_date: date,
+    end_date: date,
+) -> list[dict[str, Any]]:
+    with get_conn() as conn:
+        rows = conn.execute(
+            _FETCH_TREND_PATTERN_V4_FOR_SYMBOL,
+            (symbol, start_date, end_date),
+        ).fetchall()
+    return [dict(zip(_TREND_PATTERN_V4_COLS, row)) for row in rows]
 
 
 def fetch_latest_indicator_snapshot_date() -> date | None:

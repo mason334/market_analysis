@@ -63,11 +63,15 @@ market_analysis/
 │   │   ├── trend.py                  # 趋势指标计算
 │   │   ├── adaptive_trend.py         # 自适应分段实验（纯计算）
 │   │   ├── trend_pattern.py          # 长窗口趋势形态分类与质量统计
+│   │   ├── trend_pattern_v4_legs.py  # v4 effective-leg 提取与索引保留
+│   │   ├── trend_pattern_v4_structure.py # v4 方向无关结构分类
+│   │   ├── trend_pattern_v4_metrics.py # v4 close-path 数值指标
 │   │   └── sector_heat.py            # 板块热度指标计算
 │   ├── pipeline/
 │   │   ├── run_indicators.py         # 每日 symbol 级指标批量执行
 │   │   ├── run_adaptive_trend_experiment.py # 独立自适应分段实验
 │   │   ├── run_trend_patterns.py     # 基于已持久化分段的形态分类
+│   │   ├── run_trend_pattern_v4.py   # v4 结构与路径指标快照
 │   │   └── run_sector_heat.py        # 每日板块热度批量执行
 │   │   └── archive/                  # 历史 pipeline，不参与当前 CLI 主流程
 │   ├── strategies/
@@ -93,6 +97,7 @@ market_analysis/
 - `trend_segmentation_daily`：自适应分段模型选择摘要，每 `symbol/date/lookback_bars` 一行。
 - `trend_segment_daily`：自适应分段明细，每 `symbol/date/lookback_bars/segment_index` 一行。
 - `trend_pattern_daily`：长窗口形态分类，每 `symbol/date/lookback_bars` 一行。
+- `trend_pattern_v4_daily`：v4 结构与 close-path 指标，每 `symbol/date/lookback_bars` 一行。
 - `sector_heat_daily`：板块热度快照，每 `universe_ticker/date` 一行。
 
 `queries.py` 中的快照查询函数从 `support_resistance_daily` + `trend_daily` 拼出宽表结果，不再回退到历史兼容表。
@@ -203,6 +208,14 @@ log return。BIC 复杂度惩罚乘数由 `bic_penalty_multiplier` 配置，默�
 形态分布、regime 分布、主导形态比例和 `irregular_path` 比例仅输出质检日志，不另建质量
 统计表，也不创建 `market_indicator_snapshot_v2`。
 
+### trend_pattern_v4_daily
+
+v4 使用独立表，不覆盖 `trend_pattern_daily`。`lookback_bars` 表示 close observations
+数量，40/60 bars 分别对应 39/59 个 daily returns。表中保存 1～4 effective legs 的
+`start_direction`、`structure_index`、`structure_code`，以及已接受的 G01～G07、T03、T04
+连续数值指标；无 effective leg 时仍写入 raw-close 指标，结构字段和
+`terminal_leg_start_position` 为 `NULL`。D01～D03 为可推导量，不重复持久化。
+
 ### sector_heat_daily
 
 ```sql
@@ -273,6 +286,9 @@ market-analysis run-trend-segmentation-experiment
 # 基于最新分段快照计算长窗口形态
 market-analysis run-trend-pattern-analysis
 
+# 基于已持久化分段计算 v4 结构与路径指标；可选 --date YYYY-MM-DD
+market-analysis run-trend-pattern-v4-analysis
+
 # 查看指定日期指标快照
 market-analysis show --date 2026-05-29
 
@@ -335,7 +351,8 @@ cron 建议顺序：
 
 - 数据库表、字段、索引、主键、唯一约束。
 - `support_resistance_daily`、`trend_daily`、`trend_segmentation_daily`、
-  `trend_segment_daily`、`trend_pattern_daily`、`sector_heat_daily` 的字段含义。
+  `trend_segment_daily`、`trend_pattern_daily`、`trend_pattern_v4_daily`、
+  `sector_heat_daily` 的字段含义。
 - `queries.py` 中供下游使用的返回列、列名、排序、空值语义。
 - CLI 命令名称或输出格式。
 - 下游可能依赖的配置键、参数默认值或数据语义。

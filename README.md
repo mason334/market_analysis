@@ -14,12 +14,16 @@ Daily symbol-level analysis is now split by responsibility:
   segmentation experiment summary and segment details.
 - `trend_pattern_daily` stores layered regime/bias/path/terminal-state descriptors and one
   derived long-window pattern per symbol/date/lookback.
+- `trend_pattern_v4_daily` independently stores v4 effective-leg structure plus accepted
+  close-path geometry and temporal metrics per symbol/date/lookback.
 - `sector_heat_daily` remains unchanged and independent from symbol indicators.
 
 Calculation modules now live under `src/market_analysis/indicators/`:
 
 - `support_resistance.py` computes SR levels, SR status, ATR distance, and breakouts.
 - `trend.py` computes linear-regression trend windows.
+- `trend_pattern_v4_legs.py`, `trend_pattern_v4_structure.py`, and
+  `trend_pattern_v4_metrics.py` separately compute v4 legs, structure, and path metrics.
 
 Snapshot query helpers return a wide, downstream-compatible view by joining/pivoting
 `support_resistance_daily` and `trend_daily` internally. Display and further analysis are
@@ -118,6 +122,7 @@ PostgreSQL (localhost:5432)
     ├── trend_segmentation_daily    # 自适应分段模型选择摘要
     ├── trend_segment_daily         # 自适应趋势分段明细
     ├── trend_pattern_daily         # 长窗口趋势形态分类
+    ├── trend_pattern_v4_daily      # v4 结构与 close-path 指标
     └── sector_heat_daily           # 板块热度快照（每 universe_ticker 每日一行）
 ```
 
@@ -209,11 +214,11 @@ RSS，并使用 BIC 选择分段数。每一段不少于 `min_segment_bars`，�
 lookback 的 pattern/regime 分布、主导形态比例和 `irregular_path` 比例作为质检；这些质量
 统计不写入数据库。本阶段不创建 `market_indicator_snapshot_v2`。
 
-#### trend_pattern_v4 第一阶段：方向无关结构表
+#### trend_pattern_v4：方向无关结构与路径指标
 
-`trend_pattern_v4` 当前只完成第一阶段的结构编码，尚未替换生产中的
-`trend_pattern_v3`，也不写入 `trend_pattern_daily`。算法过滤近似 flat 的 segment、合并
-连续同方向 segment 得到 effective legs，并对 1～4 条 effective legs 做如下处理：
+`trend_pattern_v4` 不替换生产中的 `trend_pattern_v3`，而是写入独立的
+`trend_pattern_v4_daily`。算法过滤近似 flat 的 segment、合并连续同方向 segment 得到
+effective legs，并对 1～4 条 effective legs 做如下处理：
 
 第二阶段的指标定义、审核状态、未决问题和 session 交接信息统一维护在
 [`docs/trend_pattern_v4_metric_spec.md`](docs/trend_pattern_v4_metric_spec.md)。该规格在指标进入
@@ -237,6 +242,14 @@ python scripts/show_trend_pattern_v4_stage1.py --legs "0.08,-0.10,0.12"
 ```
 
 生成页面为 `artifacts/trend_pattern_v4_stage1.html`，包含全部 40 个结构的判定数值和示例图。
+
+v4 的基础路径几何和时间组织指标由独立纯计算模块处理。`lookback_bars` 表示 close
+observations 数量，因此 40/60 bars 分别包含 39/59 个 daily returns。运行：
+
+```bash
+market-analysis run-trend-pattern-v4-analysis
+market-analysis run-trend-pattern-v4-analysis --date 2026-07-25
+```
 
 ### sector_heat_daily（板块热度快照）
 
@@ -432,6 +445,9 @@ market-analysis validate-trend-segmentation `
 
 # 基于最新自适应分段生成长窗口形态
 market-analysis run-trend-pattern-analysis
+
+# 基于持久化分段生成 v4 结构与路径指标
+market-analysis run-trend-pattern-v4-analysis
 ```
 
 验证参数网格、历史截面偏移和报告中展示的候选参数数量配置在

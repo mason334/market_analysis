@@ -6,13 +6,13 @@
 ## 1. 当前工作状态
 
 - 最后更新：2026-07-26
-- 当前阶段：第二阶段——逐项审核 close-price 路径指标
-- 当前审核指标：`G06 terminal_leg_start_position`
-- 下一审核指标：审核字段冗余和最终持久化集合
+- 当前阶段：第二阶段指标已实现，进入字段冗余审核和规格冻结
+- 当前审核指标：审核字段冗余和最终持久化集合
+- 下一审核指标：冻结 v4 第二阶段指标规格 v0.1
 - 第一阶段状态：1～4 effective legs 的 40 个方向无关 `structure_code` 已实现并验证
-- 生产状态：`trend_pattern_v4` 尚未替换 `trend_pattern_v3`，也尚未写入
-  `trend_pattern_daily`
-- 当前主要未决问题：逐项确认指标目的、计算公式、边界情况、冗余性和持久化必要性
+- 生产状态：`trend_pattern_v4` 不替换 `trend_pattern_v3`；已写入独立表
+  `trend_pattern_v4_daily`，`investment_dashboard` 尚未接入
+- 当前主要未决问题：审核最终持久化集合并冻结第二阶段规格
 
 新 session 开始时，应依次阅读：
 
@@ -45,6 +45,11 @@
 11. `trend_pattern_v4` 将输出独立的新版指标集合并形成新的数据表结构；评估 v4 字段冗余和
     持久化必要性时，只比较 v4 自身 accepted 字段，不以 `trend.py`、`trend_pattern.py`
     或旧表中的历史同义字段作为否决依据。
+12. `lookback_bars = m` 表示窗口包含的 close-price observations 数量；daily return 数量
+    为 `n = m - 1`。因此 40/60 bars 分别包含 39/59 个 daily return intervals。
+13. v4 实现拆分为 `trend_pattern_v4_legs.py`、`trend_pattern_v4_structure.py` 和
+    `trend_pattern_v4_metrics.py` 三个并列纯计算模块，由 pipeline 统一编排；v4 使用独立表
+    `trend_pattern_v4_daily` 和独立 CLI `run-trend-pattern-v4-analysis`。
 
 ## 3. 状态定义
 
@@ -80,6 +85,7 @@
 |---|---|---|---|
 | `C_t` | Close Price at Time `t` | lookback window 内第 `t` 个 split-adjusted daily close | 价格，`C_t > 0` |
 | `x_t` | Log Price at Time `t` | `log(C_t)`，第 `t` 个 log price | log price |
+| `m` | Number of Close Observations | lookback window 内 close-price observations 数量，即 `lookback_bars` | 40 或 60 |
 | `n` | Number of Return Intervals | 窗口内 daily return 的数量；价格点数量为 `n + 1` | 正整数 |
 | `t` | Time Index | 价格点或收益间隔的时间索引 | `0..n` 或 `1..n` |
 | `r_t` | Log Return at Interval `t` | `x_t - x_(t-1)`，第 `t` 个 daily log return | log return |
@@ -167,7 +173,7 @@ O_h(y) = mean(I(abs(x_t - y) <= h)), t = 0..n
 | G03 | `historical_volatility` | `accepted` | 否 | 是 |
 | G04 | `terminal_price_rank` | `accepted` | 否 | 是 |
 | G05 | `terminal_price_position` | `accepted` | 否 | 是 |
-| G06 | `terminal_leg_start_position` | `reviewing` | 是 | 待审核 |
+| G06 | `terminal_leg_start_position` | `accepted` | 是 | 是 |
 | G07 | `terminal_breakout_distance_vol` | `accepted` | 否 | 是 |
 | G08 | `terminal_crossing_density` | `deferred` | 否 | 否 |
 
@@ -401,11 +407,11 @@ terminal_price_position = (x_n - x_min) / R_x
 
 ### G06 — `terminal_leg_start_position`
 
-- 状态：`reviewing`
+- 状态：`accepted`
 - 目的：描述 terminal effective leg 从整个窗口价格区间的什么相对位置开始。
 - 自适应分段依赖：是；分段负责识别 terminal effective leg 的起点索引。
 
-候选定义：
+定义：
 
 ```text
 x_min = min(x_t), t = 0..n
@@ -420,12 +426,18 @@ terminal_leg_start_position = (x_tau - x_min) / R_x
 - `x_t = log(C_t)` 是窗口内第 `t` 个 split-adjusted daily close 的实际 log price；
 - `C_t` 是窗口内第 `t` 个 split-adjusted daily close，且 `C_t > 0`；
 - `t` 是价格点索引，取值为 `0..n`；
-- `tau` 是自适应分段和 effective-leg 合并规则识别出的 terminal effective leg 起点索引；
+- `tau` 是自适应分段和 effective-leg 合并规则识别出的 terminal effective leg 起点索引：
+  它取最后一条 effective directional leg 所合并的第一条源 segment 的实际价格起点；按照
+  当前 `[start, end)` 分段约定，源 segment 的 `start = 0` 时 `tau = 0`，否则
+  `tau = start - 1`；
 - `x_tau` 是该起点日期的实际 log price，而不是 fitted log price；
 - `x_min`、`x_max` 和 `R_x` 与 G05 使用相同的完整窗口实际 log-price 口径；
 - 当 `R_x > 0` 时，理论范围为 `0..1`：`0` 表示从窗口最低价格处开始，`1` 表示从
   窗口最高价格处开始；
-- 当 `R_x = 0` 时，候选边界定义为 `terminal_leg_start_position = 0.5`；
+- 末端存在被 effective-leg 规则过滤的 flat segments 时，不改变 `tau`；动作终点仍固定为
+  窗口当前终点 `x_n`，因此该字段描述“从最后一条有效方向运动开始至今”的 terminal phase；
+- 当 `R_x = 0` 时不存在可识别的 effective directional leg，定义
+  `terminal_leg_start_position = NULL`；
 - 若不能识别 terminal effective leg，或任一所需 close 缺失、非有限或小于等于 0，定义
   `terminal_leg_start_position = NULL`。
 
@@ -448,13 +460,20 @@ terminal_leg_range_share = abs(signed_terminal_leg_range_share)
 - 上述代数关系要求 G05、G06 和 D03 使用同一实际 log-price range，并以窗口当前终点
   `x_n` 作为动作终点。
 
-待审核问题：
+手算示例与持久化结论：
 
-1. 当末端存在被 effective-leg 规则过滤的 flat segments 时，`tau` 应定义为最后一条
-   directional effective leg 的原始起点，还是当前 terminal phase 的起点？
-2. `R_x = 0` 时输出 `0.5`，还是因为不存在 effective leg 而输出 `NULL`？
-3. 40/60 日窗口的 range 会随 lookback 扩大；应确认该字段表达的是各自窗口内的相对位置，
-   而不是宣称跨 lookback 完全无尺度影响。
+- 当实际 log prices 为 `[0, 0.04, 0.02, 0.08]`，且 terminal effective leg 从
+  `tau = 2` 开始时，`x_min = 0`、`x_max = 0.08`、`R_x = 0.08`，因此
+  `terminal_leg_start_position = 0.02 / 0.08 = 0.25`；G05 为 `1`，D03
+  `terminal_leg_range_share = abs(1 - 0.25) = 0.75`；
+- 达到持久化标准。G05 只保存终点位置，T01/T02 只保存方向和结构类别，均无法恢复
+  terminal effective leg 的实际起点价格位置；
+- 本字段依赖自适应分段和 effective-leg 阈值，但这些规则同时是 v4 结构定义的组成部分，
+  依赖关系明确且可随 calculation version 固定；
+- 40/60 日结果分别表示各自 lookback price range 内的相对起点位置，不宣称完全消除
+  lookback 对 range 的影响；
+- 持久化 `terminal_leg_start_position`；D03 `terminal_leg_range_share` 由 G05 和 G06
+  稳定推导，不重复持久化。
 
 ### G07 — `terminal_breakout_distance_vol`
 
@@ -631,8 +650,8 @@ squared_movement_time_position = sum(u_t * w_t, t = 1..n)
 - 当 squared movements 均匀分布时，`w_t = 1 / n`，此时
   `sum(u_t * w_t, t = 1..n) = 0.5`；直接保留该加权时间重心，不再额外减去 `0.5`
   或乘以系数 `2`；
-- 精确理论范围为 `1 / (2n) .. 1 - 1 / (2n)`；40 个 return intervals 时为
-  `0.0125..0.9875`，60 个 return intervals 时约为 `0.0083..0.9917`；
+- 精确理论范围为 `1 / (2n) .. 1 - 1 / (2n)`；40 个 closes 对应 `n = 39`，范围约为
+  `0.01282..0.98718`；60 个 closes 对应 `n = 59`，范围约为 `0.00847..0.99153`；
 - 接近 `0` 表示 squared movements 集中在窗口开头附近，`0.5` 表示运动时间重心位于
   窗口中央，接近 `1` 表示 squared movements 集中在窗口结尾附近；
 - 新公式与旧公式 `2 * (new_value - 0.5)` 之间是一一对应的线性变换，不损失信息，
@@ -673,7 +692,8 @@ squared_movement_concentration = 1 - effective_movement_day_ratio
 - `squared_movement_concentration` 等于 1 减去有效贡献日期比例，数值越大表示 movement
   越集中在少数日期；
 - 精确理论范围为 `0 .. 1 - 1 / n`：完全均匀时为 `0`，单日独占时为 `1 - 1 / n`；
-  40 个 return intervals 的上限为 `0.975`，60 个 return intervals 的上限约为 `0.9833`；
+  40 个 closes 对应 `n = 39`，上限约为 `0.97436`；60 个 closes 对应 `n = 59`，
+  上限约为 `0.98305`；
 - 例如权重为 `[0.5, 0.5, 0, 0]` 时，`H_w = 0.5`，有效贡献日期比例为 `0.5`，
   `squared_movement_concentration = 0.5`；权重为 `[0.4, 0.6, 0, 0]` 时，集中度约为
   `0.5192`；
@@ -777,10 +797,9 @@ net_log_return / sqrt(QV)
 
 严格按一次一个指标的顺序讨论：
 
-1. `G06 terminal_leg_start_position`
-2. 审核字段冗余和最终持久化集合
-3. 冻结 v4 第二阶段指标规格 v0.1
-4. 再设计人类可读的派生状态和 pattern 名称
+1. 审核字段冗余和最终持久化集合
+2. 冻结 v4 第二阶段指标规格 v0.1
+3. 再设计人类可读的派生状态和 pattern 名称
 
 ## 11. 决策日志
 
@@ -842,6 +861,13 @@ net_log_return / sqrt(QV)
 - 放弃 T05 signed `terminal_leg_contribution`：其分母随 leg 数量和 lookback 内往返运动
   增长，且方向信息重复；引入 G06 `terminal_leg_start_position`，与 G05 一起描述
   terminal leg 的窗口区间起点和动作量。原 breakout/crossing 指标顺延为 G07/G08。
+- `G06 terminal_leg_start_position` 已标记为 `accepted` 并达到持久化标准；使用 terminal
+  effective leg 第一条源 segment 的实际起点，trailing flat segments 不改变该起点，
+  flat range 或无法识别 effective leg 时输出 `NULL`。D03 range share 由 G05/G06 派生。
+- 锁定窗口计数口径：`lookback_bars` 是 close observations 数量，daily return 数量为
+  `lookback_bars - 1`；40/60 bars 分别对应 39/59 个 daily returns。
+- v4 已按独立模块和独立表落地；2026-07-07 受控快照写入 364 行，其中40/60 bars 各
+  182 行、50 行无 effective leg，0 行跳过，所有已持久化指标均无范围违规。
 
 ## 12. Session 交接模板
 
@@ -873,7 +899,7 @@ net_log_return / sqrt(QV)
 - `G03 historical_volatility` 已标记为 accepted，并确定持久化。
 - `G04 terminal_price_rank` 已标记为 accepted。
 - `G05 terminal_price_position` 已标记为 accepted。
-- `G06 terminal_leg_start_position` 已进入审核。
+- `G06 terminal_leg_start_position` 已标记为 accepted，并确定持久化。
 - `G07 terminal_breakout_distance_vol` 已标记为 accepted，并确定持久化。
 - `G08 terminal_crossing_density` 已标记为 deferred，不进入第一版核心持久化字段。
 - `T03 squared_movement_time_position` 已标记为 accepted。
@@ -882,16 +908,19 @@ net_log_return / sqrt(QV)
 
 本次未决：
 - G02 effective-leg 版本作为未来变体保留待审核，但不影响当前 daily-close 字段。
-- G06 对 trailing flat segments 的 terminal leg 起点口径，以及 flat range 边界仍待确认。
 
 下一项：
-- G06 terminal_leg_start_position。
+- 审核字段冗余和最终持久化集合。
 
 相关代码：
+- src/market_analysis/indicators/trend_pattern_v4_legs.py
 - src/market_analysis/indicators/trend_pattern_v4_structure.py
-- src/market_analysis/indicators/trend_pattern.py
-- src/market_analysis/indicators/adaptive_trend.py
+- src/market_analysis/indicators/trend_pattern_v4_metrics.py
+- src/market_analysis/pipeline/run_trend_pattern_v4.py
+- src/market_analysis/db/schema.py
+- src/market_analysis/db/queries.py
 
 接口影响：
-- 当前仅设计文档，不修改数据库、CLI 或 investment_dashboard 接口。
+- 新增 `trend_pattern_v4_daily` 表和 `run-trend-pattern-v4-analysis` CLI；不修改旧
+  `trend_pattern_daily` 或 v3 CLI。`investment_dashboard` 尚未接入新表，当前页面无变化。
 ```

@@ -68,7 +68,12 @@ indicators:
     double_test_confirmation_ratio: 0.50
 
   trend_pattern_v4:
-    # 第一阶段只做 1～4 effective legs 的方向无关结构分类。
+    # v4 独立维护 effective-leg 过滤阈值，不继承 trend_pattern_v3 配置。
+    min_abs_fitted_log_return: 0.02
+    min_linearity_r2: 0.35
+    min_abs_vol_adjusted_trend: 0.75
+
+    # 1～4 effective legs 的方向无关结构分类。
     # 连续两个同类 fitted pivot 的相对差异不超过该值时记为 retest；
     # 超出容差后，当前 leg 振幅较小记为 short_of，较大记为 break。
     pivot_retest_tolerance: 0.25

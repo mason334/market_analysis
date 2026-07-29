@@ -205,6 +205,51 @@ CREATE INDEX IF NOT EXISTS trend_pattern_daily_symbol_date_idx
 """
 
 
+_CREATE_TREND_PATTERN_V4_DAILY = """
+CREATE TABLE IF NOT EXISTS trend_pattern_v4_daily (
+    symbol                                  TEXT  NOT NULL,
+    date                                    DATE  NOT NULL,
+    lookback_bars                           INT   NOT NULL,
+    observation_count                       INT   NOT NULL,
+    source_segment_count                    INT   NOT NULL,
+    effective_leg_count                     INT   NOT NULL,
+    start_direction                         TEXT,
+    structure_index                         INT,
+    structure_code                          TEXT,
+    net_log_return                          FLOAT,
+    path_efficiency                         FLOAT,
+    historical_volatility                   FLOAT,
+    terminal_price_rank                     FLOAT,
+    terminal_price_position                 FLOAT,
+    terminal_leg_start_position             FLOAT,
+    terminal_breakout_distance_vol          FLOAT,
+    squared_movement_time_position          FLOAT,
+    squared_movement_concentration          FLOAT,
+    min_abs_fitted_log_return               FLOAT NOT NULL,
+    min_linearity_r2                        FLOAT NOT NULL,
+    min_abs_vol_adjusted_trend              FLOAT NOT NULL,
+    pivot_retest_tolerance                  FLOAT NOT NULL,
+    source_segmentation_method              TEXT  NOT NULL,
+    source_segmentation_calculation_version TEXT  NOT NULL,
+    method                                  TEXT  NOT NULL,
+    calculation_version                     TEXT  NOT NULL,
+    PRIMARY KEY (symbol, date, lookback_bars),
+    CHECK (lookback_bars >= 3),
+    CHECK (observation_count = lookback_bars),
+    CHECK (effective_leg_count BETWEEN 0 AND 4),
+    CHECK (start_direction IS NULL OR start_direction IN ('up', 'down')),
+    CHECK (structure_index IS NULL OR structure_index BETWEEN 1 AND 40)
+);
+"""
+
+_CREATE_TREND_PATTERN_V4_DAILY_IDX = """
+CREATE INDEX IF NOT EXISTS trend_pattern_v4_daily_date_structure_idx
+    ON trend_pattern_v4_daily (date DESC, lookback_bars, structure_code);
+CREATE INDEX IF NOT EXISTS trend_pattern_v4_daily_symbol_date_idx
+    ON trend_pattern_v4_daily (symbol, date DESC);
+"""
+
+
 _CREATE_SECTOR_HEAT_DAILY = """
 CREATE TABLE IF NOT EXISTS sector_heat_daily (
     universe_ticker   TEXT  NOT NULL,
@@ -247,6 +292,8 @@ def init_schema() -> None:
         conn.execute(_CREATE_TREND_PATTERN_DAILY)
         _execute_statements(conn, _ALTER_TREND_PATTERN_DAILY)
         _execute_statements(conn, _CREATE_TREND_PATTERN_DAILY_IDX)
+        conn.execute(_CREATE_TREND_PATTERN_V4_DAILY)
+        _execute_statements(conn, _CREATE_TREND_PATTERN_V4_DAILY_IDX)
         conn.execute(_CREATE_SECTOR_HEAT_DAILY)
         _execute_statements(conn, _CREATE_SECTOR_HEAT_DAILY_IDX)
         conn.commit()

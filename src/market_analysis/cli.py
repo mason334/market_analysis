@@ -129,6 +129,27 @@ def run_trend_pattern_analysis() -> None:
     typer.echo(f"Done. {total} long-window trend patterns written.")
 
 
+@app.command("run-trend-pattern-v4-analysis")
+def run_trend_pattern_v4_analysis(
+    target_date: str | None = typer.Option(
+        None,
+        "--date",
+        "-d",
+        help="Segmentation snapshot date (YYYY-MM-DD); defaults to the latest snapshot.",
+    ),
+) -> None:
+    """Build v4 structure and close-path metrics from persisted segmentation."""
+    from market_analysis.db.schema import init_schema
+    from market_analysis.pipeline.run_trend_pattern_v4 import (
+        run_trend_pattern_v4_pipeline,
+    )
+
+    init_schema()
+    parsed_date = None if target_date is None else date.fromisoformat(target_date)
+    total = run_trend_pattern_v4_pipeline(parsed_date)
+    typer.echo(f"Done. {total} trend_pattern_v4 rows written.")
+
+
 @app.command("show")
 def show(
     target_date: str = typer.Option(

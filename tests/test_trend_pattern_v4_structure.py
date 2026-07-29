@@ -8,7 +8,6 @@ from market_analysis.indicators.trend_pattern_v4_structure import (
     DIRECTION_NEUTRAL_STRUCTURES,
     PivotRelation,
     classify_effective_leg_structure,
-    effective_leg_returns_from_segments,
     example_returns_for_template,
 )
 
@@ -77,33 +76,6 @@ def test_three_leg_example_is_classified_from_both_pivot_comparisons() -> None:
     assert [
         item.relative_difference for item in result.relation_measurements
     ] == pytest.approx([0.20, 1 / 6])
-
-
-def test_effective_leg_builder_removes_flat_and_merges_same_direction() -> None:
-    segments = [
-        {
-            "fitted_log_return": 0.05,
-            "linearity_r2": 0.80,
-            "vol_adjusted_trend": 1.20,
-        },
-        {
-            "fitted_log_return": 0.005,
-            "linearity_r2": 0.90,
-            "vol_adjusted_trend": 2.00,
-        },
-        {
-            "fitted_log_return": 0.04,
-            "linearity_r2": 0.80,
-            "vol_adjusted_trend": 1.20,
-        },
-        {
-            "fitted_log_return": -0.06,
-            "linearity_r2": 0.20,
-            "vol_adjusted_trend": -1.00,
-        },
-    ]
-
-    assert effective_leg_returns_from_segments(segments) == pytest.approx((0.09, -0.06))
 
 
 @pytest.mark.parametrize(

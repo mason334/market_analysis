@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from collections.abc import Iterable, Sequence
+from collections.abc import Sequence
 from dataclasses import dataclass
 from enum import StrEnum
 from itertools import product
@@ -237,44 +237,6 @@ def classify_effective_leg_structure(
         relation_measurements=measurements,
         pivot_retest_tolerance=tolerance,
     )
-
-
-def effective_leg_returns_from_segments(
-    segments: Iterable[dict[str, Any]],
-    *,
-    min_abs_fitted_log_return: float = 0.02,
-    min_linearity_r2: float = 0.35,
-    min_abs_vol_adjusted_trend: float = 0.75,
-) -> tuple[float, ...]:
-    """Filter flat segments and merge consecutive effective directions."""
-    min_return = float(min_abs_fitted_log_return)
-    min_r2 = float(min_linearity_r2)
-    min_vol_adjusted = float(min_abs_vol_adjusted_trend)
-    if (
-        not isfinite(min_return)
-        or min_return <= 0.0
-        or not isfinite(min_r2)
-        or not 0.0 <= min_r2 <= 1.0
-        or not isfinite(min_vol_adjusted)
-        or min_vol_adjusted <= 0.0
-    ):
-        raise ValueError("Effective-leg thresholds are outside their valid ranges.")
-
-    legs: list[float] = []
-    for segment in segments:
-        fitted_return = float(segment.get("fitted_log_return") or 0.0)
-        linearity_r2 = float(segment.get("linearity_r2") or 0.0)
-        vol_adjusted = float(segment.get("vol_adjusted_trend") or 0.0)
-        is_directional = abs(fitted_return) >= min_return and (
-            linearity_r2 >= min_r2 or abs(vol_adjusted) >= min_vol_adjusted
-        )
-        if not is_directional:
-            continue
-        if legs and legs[-1] * fitted_return > 0.0:
-            legs[-1] += fitted_return
-        else:
-            legs.append(fitted_return)
-    return tuple(legs)
 
 
 def example_returns_for_template(
