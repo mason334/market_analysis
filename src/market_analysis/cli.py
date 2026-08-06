@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import atexit
+import json
 from datetime import date
 from pathlib import Path
 
@@ -73,6 +74,36 @@ def run_trend_segmentation_experiment() -> None:
     init_schema()
     total = run_adaptive_trend_experiment_pipeline()
     typer.echo(f"Done. {total} symbols written to adaptive trend experiment tables.")
+
+
+@app.command("compute-adaptive-trend")
+def compute_adaptive_trend_cmd(
+    symbol: str = typer.Option(..., "--symbol", help="Ticker symbol."),
+    lookback: int = typer.Option(60, "--lookback", min=40, max=250),
+    min_segment_bars: int = typer.Option(5, "--min-segment-bars", min=2, max=30),
+    max_segments: int = typer.Option(5, "--max-segments", min=1, max=10),
+    bic_penalty_multiplier: float = typer.Option(
+        3.0,
+        "--bic-penalty-multiplier",
+        min=0.1,
+        max=10.0,
+    ),
+    target_date: str = typer.Option("", "--date", help="Optional end date YYYY-MM-DD."),
+) -> None:
+    """Compute one read-only adaptive trend result and emit JSON."""
+    from market_analysis.pipeline.compute_adaptive_trend import (
+        compute_adaptive_trend_for_symbol,
+    )
+
+    result = compute_adaptive_trend_for_symbol(
+        symbol,
+        lookback_bars=lookback,
+        min_segment_bars=min_segment_bars,
+        max_segments=max_segments,
+        bic_penalty_multiplier=bic_penalty_multiplier,
+        target_date=date.fromisoformat(target_date) if target_date else None,
+    )
+    typer.echo(json.dumps(result, default=str, allow_nan=False, separators=(",", ":")))
 
 
 @app.command("validate-trend-segmentation")

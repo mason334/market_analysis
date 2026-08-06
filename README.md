@@ -186,10 +186,10 @@ log 口径，不提前乘 100 或舍入；百分比展示由下游转换。
 
 阶段 B 使用 40/60 bar 长窗口，在 log price 上对所有合法断点组合执行全局连续分段
 最小二乘。模型使用 linear-spline hinge basis，允许断点前后斜率变化，但要求拟合路径在
-断点处连续；拟合线不强制经过实际端点。算法比较 1 至 `max_segments` 个分段的全局最小
-RSS，并使用 BIC 选择分段数。每一段不少于 `min_segment_bars`，因此拐点不需要落在固定
-窗口边界上。实验使用可配置的 `bic_penalty_multiplier`（默认 3.0）提高复杂度惩罚，并在
-汇总表中保存该参数。
+断点处连续；拟合线不强制经过实际端点。`adaptive_trend_v3` 在固定分段数的合法组合不超过
+`exact_candidate_budget` 时执行分批精确穷举，超过预算时使用确定性 beam expansion、单断点
+全域优化和相邻双断点局部优化，再使用 BIC 选择分段数。每一段不少于
+`min_segment_bars`，因此拐点不需要落在固定窗口边界上。
 
 分段仍使用 `[start, end)` 边界；后一段的路径指标包含 `start - 1 -> start` 的进入收益，
 保证各段 `actual_log_return` 之和等于整个窗口的实际 log return。每段另存最大单日变化
@@ -198,8 +198,10 @@ RSS，并使用 BIC 选择分段数。每一段不少于 `min_segment_bars`，�
 
 - `trend_segmentation_daily`：每个 `symbol/date/lookback_bars` 的模型选择摘要。
 - `trend_segment_daily`：每个自适应段的日期边界和段内趋势指标。
-- 方法：`continuous_piecewise_log_linear_exhaustive_bic`。
-- 版本：`adaptive_trend_v2`。
+- 方法：`continuous_piecewise_log_linear_deterministic_hybrid_bic`。
+- 版本：`adaptive_trend_v3`。
+- 40/60 bars 固定输出按推荐关系分别允许 4/5 段，精确搜索；交互窗口最多 250 bars、10 段。
+- summary 显式保存 exact/approximate、全局最优保证、候选评估数、收敛状态和搜索审计信息。
 - 独立实验命令不会修改 `trend_daily`，也不会由 `run-indicators` 自动触发。
 
 ### 长窗口趋势形态
@@ -434,6 +436,11 @@ market-analysis run-sector-heat
 
 # 自适应趋势分段实验（独立于固定窗口生产流程）
 market-analysis run-trend-segmentation-experiment
+
+# 单标的只读计算；输出 dashboard 可解析的 JSON，不写生产表
+market-analysis compute-adaptive-trend `
+  --symbol AAPL --lookback 250 --min-segment-bars 5 `
+  --max-segments 10 --bic-penalty-multiplier 3.0
 
 # 自动扫描参数并生成交互式验证报告（只读 market_data，不写指标表）
 market-analysis validate-trend-segmentation --date 2026-07-17

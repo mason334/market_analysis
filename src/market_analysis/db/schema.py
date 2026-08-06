@@ -99,6 +99,12 @@ CREATE TABLE IF NOT EXISTS trend_segmentation_daily (
     min_segment_bars          INT  NOT NULL,
     max_segments              INT  NOT NULL,
     bic_penalty_multiplier    FLOAT NOT NULL DEFAULT 3.0,
+    search_mode               TEXT NOT NULL DEFAULT 'exact',
+    is_global_optimum         BOOLEAN NOT NULL DEFAULT TRUE,
+    candidates_evaluated      BIGINT NOT NULL DEFAULT 0,
+    refinement_converged      BOOLEAN NOT NULL DEFAULT TRUE,
+    search_config             JSONB NOT NULL DEFAULT '{}'::jsonb,
+    search_diagnostics        JSONB NOT NULL DEFAULT '[]'::jsonb,
     method                    TEXT NOT NULL,
     calculation_version       TEXT NOT NULL,
     PRIMARY KEY (symbol, date, lookback_bars)
@@ -108,6 +114,18 @@ CREATE TABLE IF NOT EXISTS trend_segmentation_daily (
 _ALTER_TREND_SEGMENTATION_DAILY = """
 ALTER TABLE trend_segmentation_daily
     ADD COLUMN IF NOT EXISTS bic_penalty_multiplier FLOAT NOT NULL DEFAULT 3.0;
+ALTER TABLE trend_segmentation_daily
+    ADD COLUMN IF NOT EXISTS search_mode TEXT NOT NULL DEFAULT 'exact';
+ALTER TABLE trend_segmentation_daily
+    ADD COLUMN IF NOT EXISTS is_global_optimum BOOLEAN NOT NULL DEFAULT TRUE;
+ALTER TABLE trend_segmentation_daily
+    ADD COLUMN IF NOT EXISTS candidates_evaluated BIGINT NOT NULL DEFAULT 0;
+ALTER TABLE trend_segmentation_daily
+    ADD COLUMN IF NOT EXISTS refinement_converged BOOLEAN NOT NULL DEFAULT TRUE;
+ALTER TABLE trend_segmentation_daily
+    ADD COLUMN IF NOT EXISTS search_config JSONB NOT NULL DEFAULT '{}'::jsonb;
+ALTER TABLE trend_segmentation_daily
+    ADD COLUMN IF NOT EXISTS search_diagnostics JSONB NOT NULL DEFAULT '[]'::jsonb;
 """
 
 _CREATE_TREND_SEGMENTATION_DAILY_IDX = """
@@ -131,6 +149,7 @@ CREATE TABLE IF NOT EXISTS trend_segment_daily (
     log_slope_per_bar            FLOAT,
     linearity_r2                 FLOAT,
     fitted_log_return            FLOAT,
+    fitted_anchor_log_price      FLOAT,
     actual_log_return            FLOAT,
     realized_volatility_daily    FLOAT,
     vol_adjusted_trend           FLOAT,
@@ -150,6 +169,7 @@ ALTER TABLE trend_segment_daily ADD COLUMN IF NOT EXISTS largest_move_log_return
 ALTER TABLE trend_segment_daily ADD COLUMN IF NOT EXISTS largest_move_date DATE;
 ALTER TABLE trend_segment_daily ADD COLUMN IF NOT EXISTS largest_move_bar_index INT;
 ALTER TABLE trend_segment_daily ADD COLUMN IF NOT EXISTS largest_move_path_share FLOAT;
+ALTER TABLE trend_segment_daily ADD COLUMN IF NOT EXISTS fitted_anchor_log_price FLOAT;
 """
 
 _CREATE_TREND_SEGMENT_DAILY_IDX = """

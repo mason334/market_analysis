@@ -184,8 +184,11 @@ CREATE INDEX IF NOT EXISTS trend_daily_symbol_date_idx
 `trend_segment_daily` 保存每一段的日期边界、bar 索引、log slope、R²、return、波动率、
 波动率调整趋势、路径效率，以及最大单日 log return、发生日期/bar 索引和绝对路径占比。
 算法对合法断点组合执行全局连续分段最小二乘，拟合路径在断点处连续但不强制经过实际
-端点；口径为 `adaptive_trend_v2`，方法为
-`continuous_piecewise_log_linear_exhaustive_bic`。分段继续使用 `[start, end)`，后一段
+端点；当前口径为 `adaptive_trend_v3`，方法为
+`continuous_piecewise_log_linear_deterministic_hybrid_bic`。候选数不超过预算时执行分批
+精确穷举，超预算时执行确定性 beam + 单断点全域优化 + 相邻双断点局部优化，并在 summary
+中记录 exact/approximate、全局最优保证、候选数、收敛和搜索审计信息。分段继续使用
+`[start, end)`，后一段
 包含 `start - 1 -> start` 的进入收益，因此各段实际 log return 之和等于整个窗口实际
 log return。BIC 复杂度惩罚乘数由 `bic_penalty_multiplier` 配置，默认 3.0，并随摘要
 持久化。实验由独立 CLI 触发，不属于 `run-indicators` 固定窗口流程。

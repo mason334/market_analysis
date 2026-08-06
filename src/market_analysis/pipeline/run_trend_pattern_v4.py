@@ -92,11 +92,8 @@ def _build_v4_row(
         min_linearity_r2=params["min_linearity_r2"],
         min_abs_vol_adjusted_trend=params["min_abs_vol_adjusted_trend"],
     )
-    if len(legs) > 4:
-        raise ValueError("trend_pattern_v4 supports at most four effective legs.")
-
     structure = None
-    if legs:
+    if 1 <= len(legs) <= 4:
         structure = classify_effective_leg_structure(
             tuple(leg.fitted_log_return for leg in legs),
             pivot_retest_tolerance=params["pivot_retest_tolerance"],

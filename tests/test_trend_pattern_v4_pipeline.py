@@ -123,3 +123,42 @@ def test_v4_pipeline_keeps_raw_metrics_when_no_effective_leg(monkeypatch) -> Non
     assert written[0]["structure_code"] is None
     assert written[0]["terminal_leg_start_position"] is None
     assert written[0]["net_log_return"] is not None
+
+
+def test_v4_keeps_metrics_but_omits_structure_for_five_effective_legs() -> None:
+    snapshot_date, summaries, _, closes = _snapshot()
+    summaries[0]["segment_count"] = 5
+    segments = []
+    for segment_index in range(5):
+        start = segment_index * 8
+        end = start + 7
+        segments.append(
+            {
+                "symbol": "TEST",
+                "date": snapshot_date,
+                "lookback_bars": 40,
+                "segment_index": segment_index,
+                "start_date": closes.index[start].date(),
+                "end_date": closes.index[end].date(),
+                "start_bar_index": start,
+                "end_bar_index": end,
+                "fitted_log_return": 0.05 if segment_index % 2 == 0 else -0.05,
+                "linearity_r2": 0.99,
+                "vol_adjusted_trend": 2.0,
+                "method": summaries[0]["method"],
+                "calculation_version": summaries[0]["calculation_version"],
+            }
+        )
+
+    row = run_trend_pattern_v4._build_v4_row(
+        summaries[0],
+        segments,
+        closes,
+        run_trend_pattern_v4._v4_params(),
+    )
+
+    assert row["effective_leg_count"] == 5
+    assert row["structure_code"] is None
+    assert row["start_direction"] is None
+    assert row["terminal_leg_start_position"] is not None
+    assert row["net_log_return"] is not None

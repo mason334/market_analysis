@@ -6,6 +6,7 @@ from typing import Any
 import pandas as pd
 import structlog
 from psycopg import sql
+from psycopg.types.json import Jsonb
 
 from market_analysis.db import get_conn, get_source_conn
 
@@ -125,9 +126,14 @@ INSERT INTO trend_segmentation_daily (
     segment_count, change_point_count,
     selected_rss, single_segment_rss, selected_bic, single_segment_bic,
     bic_improvement, min_segment_bars, max_segments, bic_penalty_multiplier,
+    search_mode, is_global_optimum, candidates_evaluated, refinement_converged,
+    search_config, search_diagnostics,
     method, calculation_version
 )
-VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+VALUES (
+    %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s,
+    %s, %s, %s, %s, %s, %s, %s, %s
+)
 ON CONFLICT (symbol, date, lookback_bars) DO UPDATE SET
     observation_count   = EXCLUDED.observation_count,
     segment_count       = EXCLUDED.segment_count,
@@ -140,6 +146,12 @@ ON CONFLICT (symbol, date, lookback_bars) DO UPDATE SET
     min_segment_bars    = EXCLUDED.min_segment_bars,
     max_segments        = EXCLUDED.max_segments,
     bic_penalty_multiplier = EXCLUDED.bic_penalty_multiplier,
+    search_mode         = EXCLUDED.search_mode,
+    is_global_optimum   = EXCLUDED.is_global_optimum,
+    candidates_evaluated = EXCLUDED.candidates_evaluated,
+    refinement_converged = EXCLUDED.refinement_converged,
+    search_config       = EXCLUDED.search_config,
+    search_diagnostics  = EXCLUDED.search_diagnostics,
     method              = EXCLUDED.method,
     calculation_version = EXCLUDED.calculation_version
 """
@@ -148,7 +160,8 @@ _UPSERT_TREND_SEGMENT_DAILY = """
 INSERT INTO trend_segment_daily (
     symbol, date, lookback_bars, segment_index,
     start_date, end_date, start_bar_index, end_bar_index, observation_count,
-    log_slope_per_bar, linearity_r2, fitted_log_return, actual_log_return,
+    log_slope_per_bar, linearity_r2, fitted_log_return, fitted_anchor_log_price,
+    actual_log_return,
     realized_volatility_daily, vol_adjusted_trend, efficiency_ratio,
     largest_move_log_return, largest_move_date, largest_move_bar_index,
     largest_move_path_share,
@@ -156,7 +169,7 @@ INSERT INTO trend_segment_daily (
 )
 VALUES (
     %s, %s, %s, %s, %s, %s, %s, %s, %s,
-    %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s
+    %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s
 )
 ON CONFLICT (symbol, date, lookback_bars, segment_index) DO UPDATE SET
     start_date                = EXCLUDED.start_date,
@@ -167,6 +180,7 @@ ON CONFLICT (symbol, date, lookback_bars, segment_index) DO UPDATE SET
     log_slope_per_bar         = EXCLUDED.log_slope_per_bar,
     linearity_r2              = EXCLUDED.linearity_r2,
     fitted_log_return         = EXCLUDED.fitted_log_return,
+    fitted_anchor_log_price   = EXCLUDED.fitted_anchor_log_price,
     actual_log_return         = EXCLUDED.actual_log_return,
     realized_volatility_daily = EXCLUDED.realized_volatility_daily,
     vol_adjusted_trend        = EXCLUDED.vol_adjusted_trend,
@@ -198,13 +212,15 @@ _TREND_SEGMENTATION_COLS = [
     "symbol", "date", "lookback_bars", "observation_count",
     "segment_count", "change_point_count", "selected_rss", "single_segment_rss",
     "selected_bic", "single_segment_bic", "bic_improvement", "min_segment_bars",
-    "max_segments", "bic_penalty_multiplier", "method", "calculation_version",
+    "max_segments", "bic_penalty_multiplier", "search_mode", "is_global_optimum",
+    "candidates_evaluated", "refinement_converged", "search_config",
+    "search_diagnostics", "method", "calculation_version",
 ]
 
 _TREND_SEGMENT_COLS = [
     "symbol", "date", "lookback_bars", "segment_index", "start_date", "end_date",
     "start_bar_index", "end_bar_index", "observation_count", "log_slope_per_bar",
-    "linearity_r2", "fitted_log_return", "actual_log_return",
+    "linearity_r2", "fitted_log_return", "fitted_anchor_log_price", "actual_log_return",
     "realized_volatility_daily", "vol_adjusted_trend", "efficiency_ratio",
     "largest_move_log_return", "largest_move_date", "largest_move_bar_index",
     "largest_move_path_share", "method", "calculation_version",
@@ -218,7 +234,9 @@ _FETCH_TREND_SEGMENTATION_SNAPSHOT = """
 SELECT symbol, date, lookback_bars, observation_count,
        segment_count, change_point_count, selected_rss, single_segment_rss,
        selected_bic, single_segment_bic, bic_improvement, min_segment_bars,
-       max_segments, bic_penalty_multiplier, method, calculation_version
+       max_segments, bic_penalty_multiplier,
+       search_mode, is_global_optimum, candidates_evaluated, refinement_converged,
+       search_config, search_diagnostics, method, calculation_version
 FROM trend_segmentation_daily
 WHERE date = %s
 ORDER BY symbol, lookback_bars
@@ -227,7 +245,7 @@ ORDER BY symbol, lookback_bars
 _FETCH_TREND_SEGMENT_SNAPSHOT = """
 SELECT symbol, date, lookback_bars, segment_index, start_date, end_date,
        start_bar_index, end_bar_index, observation_count, log_slope_per_bar,
-       linearity_r2, fitted_log_return, actual_log_return,
+       linearity_r2, fitted_log_return, fitted_anchor_log_price, actual_log_return,
        realized_volatility_daily, vol_adjusted_trend, efficiency_ratio,
        largest_move_log_return, largest_move_date, largest_move_bar_index,
        largest_move_path_share,
@@ -590,6 +608,12 @@ def upsert_trend_segmentation_daily(
                     row["min_segment_bars"],
                     row["max_segments"],
                     row["bic_penalty_multiplier"],
+                    row.get("search_mode", "exact"),
+                    row.get("is_global_optimum", True),
+                    row.get("candidates_evaluated", 0),
+                    row.get("refinement_converged", True),
+                    Jsonb(row.get("search_config", {})),
+                    Jsonb(row.get("search_diagnostics", [])),
                     row["method"],
                     row["calculation_version"],
                 ),
@@ -610,6 +634,7 @@ def upsert_trend_segmentation_daily(
                     row.get("log_slope_per_bar"),
                     row.get("linearity_r2"),
                     row.get("fitted_log_return"),
+                    row.get("fitted_anchor_log_price"),
                     row.get("actual_log_return"),
                     row.get("realized_volatility_daily"),
                     row.get("vol_adjusted_trend"),

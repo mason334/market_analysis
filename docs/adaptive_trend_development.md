@@ -1,9 +1,9 @@
 # 自适应趋势分段算法开发记录
 
-> 文档状态：开发中  
-> 当前生产口径：`adaptive_trend_v2`  
-> 当前生产方法：`continuous_piecewise_log_linear_exhaustive_bic`  
-> 最近更新：2026-07-28
+> 文档状态：开发中
+> 当前生产口径：`adaptive_trend_v3`
+> 当前生产方法：`continuous_piecewise_log_linear_deterministic_hybrid_bic`
+> 最近更新：2026-07-29
 
 ## 1. 文档目的
 
@@ -20,12 +20,13 @@
 
 ## 2. 当前工作状态
 
-### 2.1 已实现：`adaptive_trend_v2`
+### 2.1 已实现：`adaptive_trend_v3`
 
 当前 `src/market_analysis/indicators/adaptive_trend.py` 已实现：
 
 - 默认计算 40/60 bars 两个 lookback；
-- 对每个候选分段数执行合法断点组合的精确穷举；
+- 候选数不超过预算时执行分批精确穷举；
+- 超过预算时执行确定性 beam expansion、单断点全域优化和相邻双断点局部优化；
 - 对每组断点执行全局连续分段 log-linear OLS；
 - 使用 BIC 在不同分段数之间选择最终模型；
 - 输出模型摘要、逐段指标以及拟合路径重建结果；
@@ -39,9 +40,22 @@ indicators:
   adaptive_trend:
     lookbacks: [40, 60]
     min_segment_bars: 5
-    max_segments: 4
+    max_segments_cap: 10
     bic_penalty_multiplier: 3.0
+    search:
+      exact_candidate_budget: 100000
+      exhaustive_batch_size: 2048
+      beam_width: 8
+      deterministic_seed_count: 4
+      max_refinement_passes: 10
+      rss_improvement_tolerance: 1.0e-10
+      pair_refinement_enabled: true
+      pair_refinement_radius: 5
 ```
+
+40/60 bars 固定输出按推荐关系分别允许 4/5 段，两个窗口都保持 exact。250 bars、10 段会从
+`K = 4` 起进入 `hybrid_approximate`。summary 明确保存搜索模式、全局最优保证、实际候选数、
+refinement 收敛状态、搜索配置和逐 `K` 诊断；自定义单标的计算由只读 JSON CLI 提供。
 
 ### 2.2 版本来源与 v1 → v2 沿革
 
@@ -73,6 +87,7 @@ Git 历史提供了可核验的版本沿革：
 |---|---|---|---|---|
 | 2026-07-15 | `52f6466` | `adaptive_trend_v1` | `piecewise_log_linear_dp_bic` | 各段独立线性回归，动态规划最小化各段 RSS 之和 |
 | 2026-07-24 | `05e4e54` | `adaptive_trend_v2` | `continuous_piecewise_log_linear_exhaustive_bic` | 全局连续 linear spline，对合法断点组合精确穷举 |
+| 2026-07-29 | 当前工作树 | `adaptive_trend_v3` | `continuous_piecewise_log_linear_deterministic_hybrid_bic` | 分批精确搜索 + 超预算确定性混合搜索，显式审计近似状态 |
 
 v1 到 v2 不是单纯的性能重构，而是以下计算语义变化：
 
@@ -110,7 +125,7 @@ v1 → v2 差异主要存在于 Git 历史。本节开始作为该算法的正�
 
 ### 2.3 已识别问题
 
-当前实现会先收集固定分段数下的全部合法边界，再一次性构造批量设计矩阵。随着 lookback 和
+v2 会先收集固定分段数下的全部合法边界，再一次性构造批量设计矩阵。随着 lookback 和
 `max_segments` 增加：
 
 1. 合法断点组合数按组合数量增长；
@@ -120,14 +135,14 @@ v1 → v2 差异主要存在于 Git 历史。本节开始作为该算法的正�
 
 ### 2.4 当前开发目标
 
-设计一个可审计、确定性、分层退化的后续版本：
+v3 已实现可审计、确定性、分层退化搜索；当前目标转为：
 
 - 规模可控时保持精确穷举；
 - 精确穷举改为分批处理，控制峰值内存；
 - 规模过大时使用确定性的候选搜索；
 - 明确区分 exact 与 approximate 结果；
-- 先通过精确结果验证近似搜索质量，再决定是否进入生产固定快照；
-- 支持 `investment_dashboard` 对单个 symbol 使用可调参数展示 fitted curve。
+- 持续扩大精确对照样本，监控近似搜索质量；
+- 完成 `investment_dashboard` 对单个 symbol 使用可调参数展示 fitted curve 的联调。
 
 ## 3. 当前数学模型与不变量
 
@@ -224,9 +239,9 @@ BIC(K) = n * ln(max(RSS(K) / n, epsilon))
 
 不需要为同一个 `K` 的每组候选边界重复计算 BIC。
 
-## 4. 已实现的 `adaptive_trend_v2` 计算流程
+## 4. 历史基线：`adaptive_trend_v2` 计算流程
 
-本章描述当前代码已经实现的实际流程，不是 v3 候选设计。
+本章保留 v2 的历史流程，作为 v3 精确分支的 golden baseline；当前代码行为以第 2、6～8 节为准。
 
 ### 4.1 公开入口与职责
 
@@ -640,9 +655,9 @@ sum(candidate_count(250, K, 5), K=1..14)
 906,752,928,648 批。由此可见，`max_segments_cap = 10` 仍不能作为 250 bars 精确穷举的
 可行上限，只能作为近似搜索允许考虑的模型复杂度上限。
 
-## 6. `adaptive_trend_v3` 候选架构
+## 6. `adaptive_trend_v3` 已实现架构
 
-本章全部为候选设计，尚未实现。
+本章架构已于 2026-07-29 实现。后续参数调整仍必须经过第 9 节验证。
 
 ### 6.1 总体模型选择流程
 
@@ -831,19 +846,21 @@ stationary-point 定理直接当作本算法的全局最优证明。
 |---|---:|---|---|
 | `lookbacks` | `[40, 60]` | 已实现 | 当前固定实验输出窗口 |
 | `min_segment_bars` | `5` | 已实现 | 每段最少拥有的 observations 数量 |
-| `max_segments` | `4` | 已实现 | 当前所有 lookback 共用的候选上限 |
+| `max_segments_cap` | `10` | 已实现 | 推荐最大分段数的安全上限 |
 | `bic_penalty_multiplier` | `3.0` | 已实现 | BIC 复杂度惩罚乘数 |
 
 ### 8.2 搜索工程参数
 
 | 参数 | 候选初值 | 状态 | 说明 |
 |---|---:|---|---|
-| `exact_candidate_budget` | `100000` | 待验证 | 单个固定 `K` 是否允许精确穷举的组合数预算 |
-| `exhaustive_batch_size` | `2048` | 待验证 | 每批设计矩阵候选数；不改变精确结果 |
-| `beam_width` | `8` | 待验证 | 近似搜索每层保留的候选边界数量 |
-| `max_refinement_passes` | `10` | 待验证 | 单断点往返扫描安全上限 |
-| `rss_improvement_tolerance` | `1e-10` | 待验证 | 接受 RSS 改善的相对容差 |
-| `pair_refinement_radius` | `min(m, 10)` | 未决定 | 仅在证明确有双断点局部障碍后考虑启用 |
+| `exact_candidate_budget` | `100000` | 已实现 | 按单个固定 `K` 判断是否允许精确穷举 |
+| `exhaustive_batch_size` | `2048` | 已实现 | 每批设计矩阵候选数；不改变精确结果 |
+| `beam_width` | `8` | 已实现 | 近似搜索每层保留的候选边界数量 |
+| `deterministic_seed_count` | `4` | 已实现 | 每层补充的确定性初始边界上限 |
+| `max_refinement_passes` | `10` | 已实现 | 单断点往返扫描安全上限 |
+| `rss_improvement_tolerance` | `1e-10` | 已实现 | 接受 RSS 改善的相对容差 |
+| `pair_refinement_enabled` | `true` | 已实现 | 精确对照验证后默认启用一轮相邻双断点优化 |
+| `pair_refinement_radius` | `5` | 已实现 | 双断点局部搜索半径，单位为 bars |
 
 这些参数会影响性能，部分参数也会影响近似结果。进入生产后必须由配置或明确的计算版本管理，
 不能成为不可追踪的隐式常量。dashboard 主参数菜单不一定需要暴露这些搜索工程参数。
@@ -860,11 +877,11 @@ recommended_max_segments(n)
 其中：
 
 - `n` 是交互计算的 lookback bars，要求 `n >= 40`；
-- `max_segments_cap` 是尚未确认的安全上限；
+- `max_segments_cap = 10` 是当前确认的安全上限；
 - `floor` 表示向下取整。
 
-该关系是参数推荐，不是当前生产配置。生产 60 bars 当前仍使用 `max_segments = 4`。若改为 5，
-必须验证 `trend_pattern_v3`，并处理 `trend_pattern_v4` 当前只接受 1～4 effective legs 的约束。
+该关系同时用于当前固定40/60输出，分别得到4/5段上限。`trend_pattern_v4` 对超过4条
+effective legs 的输入保留raw-close指标和leg数量，但结构字段为空，不再让整个symbol失败。
 
 ### 8.4 250 bars、10 段混合搜索资源预算
 
@@ -955,6 +972,17 @@ matrix、临时数组、Python、NumPy 和行情数据，建议按每个计算 w
 要求 5 秒内返回，首版需要进一步降低 `S`、`beam_width` 或 refinement 轮数，或者实现针对 hinge
 基函数交叉乘积的预计算优化，并用精确可计算窗口重新验证搜索质量。
 
+2026-07-29 实现后的端到端合成序列基准：
+
+- 250 bars、10段、双断点关闭：11.4秒，评估139,532个候选，正常收敛；
+- 250 bars、10段、双断点开启：14.2秒，评估200,584个候选，正常收敛；
+- 12组60-bars精确对照中，双断点关闭时BIC分段数一致率100%，RSS差距中位数0、P95为
+  1.15%、最大4.55%；
+- 同组样本启用半径5的双断点优化后，BIC分段数一致率100%，RSS差距P95为0、最大0.081%。
+
+因此 v3 默认启用双断点优化。上述结果来自有限合成样本，不代表所有市场路径上的统计保证；
+后续验证报告仍需扩大真实symbol和历史截面覆盖。
+
 ## 9. 验证计划
 
 ### 9.1 分批精确搜索等价性
@@ -1027,23 +1055,18 @@ rss_relative_gap
 
 1. 详情页只显示一套自适应分段参数，不设置“固定/自定义”模式开关；
 2. 参数与持久化快照完全一致时，可读取数据库边界并重建 fitted curve；
-3. 参数不一致时，仅为当前 symbol 在 dashboard 内存中计算；
+3. 参数不一致时，由显式按钮调用只读 `market-analysis compute-adaptive-trend` JSON CLI；
 4. 自定义结果不写入现有分段表，因为当前主键不包含全部算法参数；
 5. dashboard 不修改 `market_analysis/config/settings.yaml`；
 6. UI 可使用提交按钮避免 Streamlit 参数每次变化都触发昂贵计算，但该按钮不代表模式选择；
-7. 两个项目保持独立实现，通过共同数学规格和 golden fixtures 验证结果一致性。
+7. 自定义结果只进入 Streamlit 会话缓存；外部命令显示工作目录、完整命令和日志；
+8. dashboard 不复制或 import 分段算法，固定曲线使用持久化锚点和斜率重建。
 
 ## 11. 数据库与下游影响
 
-当前本文档本身不修改数据库、CLI、配置或下游查询接口。
-
-未来实施 `adaptive_trend_v3` 时，需要单独决定是否持久化以下审计信息：
-
-- exact 或 approximate 搜索方式；
-- 实际评估候选数量；
-- refinement 是否收敛；
-- 搜索工程参数或其版本；
-- 精确候选预算触发情况。
+v3 已增加以下摘要字段：`search_mode`、`is_global_optimum`、`candidates_evaluated`、
+`refinement_converged`、`search_config` 和 `search_diagnostics`。segment 明细增加
+`fitted_anchor_log_price`，供dashboard无需OLS重建固定拟合曲线。
 
 如果新增字段、改变 `method/calculation_version`、将 60 bars 的 `max_segments` 从 4 改为 5，
 或改变分段边界语义，必须同步检查：
@@ -1057,56 +1080,61 @@ rss_relative_gap
 
 ### 阶段 A：冻结基准
 
-- [ ] 为当前 v2 增加足够的边界与拟合 golden tests；
-- [ ] 固化 40/60 bars 当前结果作为回归基准；
-- [ ] 增加候选组合数量计算函数及测试。
+- [x] 为当前 v2 增加边界与拟合 golden tests；
+- [x] 固化代表性40/60 bars结果作为回归基准；
+- [x] 增加候选组合数量计算函数及测试。
 
 ### 阶段 B：分批精确穷举
 
-- [ ] 实现 generator + batch 设计矩阵；
-- [ ] 保持 v2 数学结果不变；
-- [ ] 测试 batch size 不影响结果；
-- [ ] 测量 60 bars、5 段的内存和运行时间。
+- [x] 实现 generator + batch 设计矩阵；
+- [x] 保持精确分支与 v2 数学结果一致；
+- [x] 测试分批精确结果；
+- [x] 测量60 bars精确对照和250 bars混合性能。
 
 ### 阶段 C：确定性候选搜索
 
-- [ ] 实现 beam expansion；
-- [ ] 实现确定性初始边界；
-- [ ] 实现单断点全域优化和收敛标记；
-- [ ] 对照精确结果选择 `beam_width` 和候选预算；
-- [ ] 评估是否确实需要双断点局部优化。
+- [x] 实现 beam expansion；
+- [x] 实现确定性初始边界；
+- [x] 实现单断点全域优化和收敛标记；
+- [x] 使用 `beam_width = 8`、单层预算100,000完成首轮精确对照；
+- [x] 验证双断点优化显著降低P95 RSS差距并默认启用。
 
 ### 阶段 D：口径升级决策
 
-- [ ] 冻结 `adaptive_trend_v3` 方法名称和计算版本；
-- [ ] 决定搜索审计信息是否持久化；
-- [ ] 决定固定 60 bars 是否允许 5 段；
-- [ ] 复核 `trend_pattern_v3/v4` 兼容性；
-- [ ] 更新 README、配置说明和数据库契约测试。
+- [x] 冻结 `adaptive_trend_v3` 方法名称和计算版本；
+- [x] 持久化搜索审计信息；
+- [x] 固定60 bars允许5段；
+- [x] 处理 `trend_pattern_v4` 超过4条effective legs的兼容性；
+- [x] 更新 README、配置说明和数据库契约测试。
 
 ### 阶段 E：dashboard 展示
 
-- [ ] 增加针对 symbol/date/lookback 的分段读取；
-- [ ] 增加 fitted curve 重建或交互计算；
-- [ ] 增加统一参数菜单和缓存键；
-- [ ] 在 K 线上显示 fitted curve 和断点；
-- [ ] 使用 golden fixtures 验证两个项目结果一致。
+- [x] 增加针对 symbol/参数的固定分段读取；
+- [x] 增加固定 fitted curve 重建和只读CLI交互计算；
+- [x] 增加统一参数菜单和会话缓存键；
+- [x] 在 K 线上显示 fitted curve 和断点；
+- [x] 增加两个项目的重建和CLI契约测试。
 
 ## 13. 待决策问题
 
-1. `exact_candidate_budget` 应按单个 `K` 还是一次完整请求累计控制？
-2. `exhaustive_batch_size = 2048` 在实际运行环境中是否是合理内存/吞吐折中？
-3. `beam_width` 的质量收益在 4、8、16 时分别如何？
-4. 单断点全域优化是否已经足够接近精确结果？
-5. 是否存在足够多的双断点协同局部障碍，值得引入 `pair_refinement_radius`？
-6. 如果启用双断点搜索，半径应固定、与 `min_segment_bars` 关联，还是按边缘命中自适应扩展？
-7. 交互 lookback 和 `max_segments` 的最大安全上限是多少？
-8. 60 bars 的生产固定输出应保持 4 段上限，还是升级到 5 段？
-9. approximate 结果是否允许进入生产表，还是仅用于 dashboard 临时展示？
-10. 哪些搜索审计字段必须持久化，哪些只需写入日志和验证报告？
-11. 大规模分支只追求经过验证的近似结果，还是必须引入回溯/上下界以提供全局最优证书？
+1. 在更大真实symbol/历史截面样本上，`beam_width = 8` 和半径5是否仍满足质量门槛？
+2. 是否需要为自定义结果增加跨会话持久缓存，还是继续只使用Dashboard会话缓存？
+3. 交互lookback未来是否需要从250扩展到700 bars；扩展前必须单独做性能与质量验证。
+4. 大规模分支未来是否需要回溯/上下界以提供全局最优证书？当前明确只报告best found。
 
 ## 14. 决策日志
+
+### 2026-07-29
+
+- 发布计算口径升级为 `adaptive_trend_v3`，方法为
+  `continuous_piecewise_log_linear_deterministic_hybrid_bic`；
+- 精确预算按单个固定 `K` 判断，默认100,000；分批大小2,048，beam width 8，确定性种子4；
+- 60-bars精确对照证明双断点半径5显著降低尾部RSS差距，因此默认启用；
+- 固定40/60 bars分别允许4/5段，交互窗口封顶250 bars、10段；
+- summary持久化搜索状态与逐K诊断，segment持久化拟合锚点；
+- `trend_pattern_v4` 对超过4条effective legs保留连续指标但不生成结构码；
+- dashboard使用统一参数菜单；固定参数读数据库，自定义参数通过显式只读CLI计算并进入会话缓存；
+- 250-bars、10段、双断点启用的合成序列基准为14.2秒、200,584个候选、正常收敛。
 
 ### 2026-07-28
 
@@ -1212,26 +1240,29 @@ rss_relative_gap
 
 ```text
 本次确认：
-- v3 候选架构采用“分批精确搜索 + 超预算确定性候选搜索”的分层方向。
-- 双断点局部优化是否启用及其半径尚需精确基准验证。
-- 当前 beam + refinement 候选框架没有全局最优保证，只能报告 best found 和局部最优状态。
+- v3 采用“分批精确搜索 + 超预算确定性混合搜索”，大规模分支不声明全局最优。
+- 默认启用半径5的相邻双断点优化；250 bars与10段上限已通过首轮性能验收。
+- dashboard固定结果读数据库，自定义结果调用只读JSON CLI，不修改market_analysis配置或生产表。
 
 本次完成：
-- 建立自适应趋势分段算法开发记录文档。
-- 补录 v1 → v2 版本沿革、版本管理规则和 v2 已实现计算流程。
+- 实现 adaptive_trend_v3、搜索审计schema、固定40/60输出、单标的CLI和下游v4兼容。
+- 实现dashboard统一参数菜单、会话缓存、拟合曲线、断点和命令日志。
+- 两项目测试及250-bars合成序列性能/质量基准通过。
 
 本次未决：
-- exact candidate budget、batch size、beam width、refinement 参数和生产 60 bars 上限。
-- 大规模分支是否需要全局回溯、lower bound 和可报告的 optimality certificate。
+- 扩大真实市场样本的精确对照范围。
+- 是否需要跨会话自定义结果缓存和700-bars交互窗口。
 
 下一步：
-- 阶段 A：冻结当前 v2 golden tests，并实现候选组合数量计算与测试。
+- 执行开发数据库幂等schema更新，并由用户重启Streamlit进行视觉验收。
 
 相关代码：
 - src/market_analysis/indicators/adaptive_trend.py
+- src/market_analysis/pipeline/compute_adaptive_trend.py
+- src/market_analysis/db/schema.py
 - tests/test_adaptive_trend.py
-- src/market_analysis/pipeline/validate_adaptive_trend.py
+- ../investment_dashboard/src/investment_dashboard/pages/market_snapshot.py
 
 接口影响：
-- 当前仅新增开发文档，不修改数据库、CLI、配置或 investment_dashboard 接口。
+- 两张adaptive表新增审计/拟合锚点字段；新增compute-adaptive-trend CLI；dashboard需要同步部署并重启。
 ```

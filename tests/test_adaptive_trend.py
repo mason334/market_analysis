@@ -8,8 +8,10 @@ from market_analysis.indicators.adaptive_trend import (
     _best_boundaries,
     _boundary_candidates,
     _fit_continuous_piecewise,
+    candidate_count,
     compute_adaptive_segmentation,
     compute_adaptive_trend_experiment,
+    recommended_max_segments,
     reconstruct_adaptive_fit,
 )
 
@@ -48,8 +50,10 @@ def test_v_shape_finds_unconfigured_turning_point() -> None:
     assert segments[0]["log_slope_per_bar"] < 0
     assert segments[1]["log_slope_per_bar"] > 0
     assert summary["bic_improvement"] > 0
-    assert summary["method"] == "continuous_piecewise_log_linear_exhaustive_bic"
-    assert summary["calculation_version"] == "adaptive_trend_v2"
+    assert summary["method"] == "continuous_piecewise_log_linear_deterministic_hybrid_bic"
+    assert summary["calculation_version"] == "adaptive_trend_v3"
+    assert summary["search_mode"] == "exact"
+    assert summary["is_global_optimum"] is True
 
 
 def test_continuous_fit_does_not_absorb_boundary_jump_as_free_intercept() -> None:
@@ -146,6 +150,57 @@ def test_experiment_supports_multiple_lookbacks() -> None:
     assert {row["lookback_bars"] for row in segments} == {40, 60}
 
 
+def test_recommended_max_segments_and_candidate_counts() -> None:
+    assert recommended_max_segments(40, 10) == 4
+    assert recommended_max_segments(60, 10) == 5
+    assert recommended_max_segments(250, 10) == 10
+    assert candidate_count(40, 4, 5) == 1_771
+    assert candidate_count(60, 5, 5) == 82_251
+
+
+def test_experiment_uses_capped_recommendation_when_fixed_max_is_absent() -> None:
+    df = _frame(4.0 + 0.005 * np.arange(80))
+
+    summaries, _ = compute_adaptive_trend_experiment(
+        "TEST",
+        df,
+        {"lookbacks": [40, 60], "min_segment_bars": 5, "max_segments_cap": 10},
+    )
+
+    assert [row["max_segments"] for row in summaries] == [4, 5]
+
+
+def test_forced_hybrid_search_is_deterministic_and_audited() -> None:
+    x = np.arange(60, dtype=float)
+    log_prices = 4.0 + 0.01 * x + 0.04 * np.maximum(x - 18.0, 0.0)
+    log_prices -= 0.06 * np.maximum(x - 39.0, 0.0)
+    df = _frame(log_prices)
+    search = {
+        "exact_candidate_budget": 100,
+        "beam_width": 4,
+        "deterministic_seed_count": 4,
+        "max_refinement_passes": 5,
+    }
+
+    first = compute_adaptive_segmentation(
+        "TEST", df, 60, max_segments=4, search_params=search
+    )
+    second = compute_adaptive_segmentation(
+        "TEST", df, 60, max_segments=4, search_params=search
+    )
+
+    assert first[0] is not None
+    assert first[0] == second[0]
+    assert first[1] == second[1]
+    assert first[0]["search_mode"] == "hybrid_approximate"
+    assert first[0]["is_global_optimum"] is False
+    assert first[0]["candidates_evaluated"] > 100
+    assert any(
+        row["search_mode"] == "hybrid_approximate"
+        for row in first[0]["search_diagnostics"]
+    )
+
+
 def test_reconstruct_fit_matches_segmentation_window() -> None:
     down = 4.5 - 0.02 * np.arange(23)
     up = down[-1] + 0.03 * np.arange(1, 18)
@@ -164,6 +219,7 @@ def test_reconstruct_fit_matches_segmentation_window() -> None:
     ]
     assert len(fit) == 40
     assert np.isfinite(fit.to_numpy()).all()
+    assert all(np.isfinite(float(row["fitted_anchor_log_price"])) for row in segments)
 
 
 @pytest.mark.parametrize(
