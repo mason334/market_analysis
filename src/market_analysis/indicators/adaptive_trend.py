@@ -10,7 +10,7 @@ from typing import Any
 import numpy as np
 import pandas as pd
 
-DEFAULT_LOOKBACKS: tuple[int, ...] = (40, 60)
+DEFAULT_LOOKBACKS: tuple[int, ...] = (60,)
 _METHOD = "continuous_piecewise_log_linear_deterministic_hybrid_bic"
 _CALCULATION_VERSION = "adaptive_trend_v3"
 _EPSILON = 1e-12

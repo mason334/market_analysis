@@ -150,6 +150,16 @@ def test_experiment_supports_multiple_lookbacks() -> None:
     assert {row["lookback_bars"] for row in segments} == {40, 60}
 
 
+def test_experiment_defaults_to_single_60_bar_production_window() -> None:
+    df = _frame(4.0 + 0.005 * np.arange(80))
+
+    summaries, segments = compute_adaptive_trend_experiment("TEST", df, {})
+
+    assert [row["lookback_bars"] for row in summaries] == [60]
+    assert {row["lookback_bars"] for row in segments} == {60}
+    assert summaries[0]["max_segments"] == 5
+
+
 def test_recommended_max_segments_and_candidate_counts() -> None:
     assert recommended_max_segments(40, 10) == 4
     assert recommended_max_segments(60, 10) == 5

@@ -39,14 +39,14 @@
 6. 控制指标数量。能够由其他持久化字段稳定推导的指标，优先作为 derived metric，
    不重复持久化。
 7. 自适应分段用于构建 effective legs 和方向无关结构指纹，不作为全部路径指标的计算基础。
-8. 40 日和 60 日是两个独立观察尺度。跨尺度稳定性暂时用于验证，不进入第一版核心字段。
+8. 当前生产只输出 60 日观察尺度；历史 40 日结果只作为既有验证资料保留。
 9. 数学公式必须在对应章节重新定义所有字母、下标、数据口径、单位和计算窗口。
 10. 指标进入生产代码、数据库 Schema 或下游接口前，必须先达到 `accepted` 状态。
 11. `trend_pattern_v4` 将输出独立的新版指标集合并形成新的数据表结构；评估 v4 字段冗余和
     持久化必要性时，只比较 v4 自身 accepted 字段，不以 `trend.py`、`trend_pattern.py`
     或旧表中的历史同义字段作为否决依据。
 12. `lookback_bars = m` 表示窗口包含的 close-price observations 数量；daily return 数量
-    为 `n = m - 1`。因此 40/60 bars 分别包含 39/59 个 daily return intervals。
+    为 `n = m - 1`。因此当前 60 bars 生产窗口包含 59 个 daily return intervals。
 13. v4 实现拆分为 `trend_pattern_v4_legs.py`、`trend_pattern_v4_structure.py` 和
     `trend_pattern_v4_metrics.py` 三个并列纯计算模块，由 pipeline 统一编排；v4 使用独立表
     `trend_pattern_v4_daily` 和独立 CLI `run-trend-pattern-v4-analysis`。
@@ -85,7 +85,7 @@
 |---|---|---|---|
 | `C_t` | Close Price at Time `t` | lookback window 内第 `t` 个 split-adjusted daily close | 价格，`C_t > 0` |
 | `x_t` | Log Price at Time `t` | `log(C_t)`，第 `t` 个 log price | log price |
-| `m` | Number of Close Observations | lookback window 内 close-price observations 数量，即 `lookback_bars` | 40 或 60 |
+| `m` | Number of Close Observations | lookback window 内 close-price observations 数量，即 `lookback_bars` | 当前生产值为 60 |
 | `n` | Number of Return Intervals | 窗口内 daily return 的数量；价格点数量为 `n + 1` | 正整数 |
 | `t` | Time Index | 价格点或收益间隔的时间索引 | `0..n` 或 `1..n` |
 | `r_t` | Log Return at Interval `t` | `x_t - x_(t-1)`，第 `t` 个 daily log return | log return |
@@ -194,8 +194,8 @@ O_h(y) = mean(I(abs(x_t - y) <= h)), t = 0..n
 | D01 | `standardized_displacement` | `derived` | 可由 `net_log_return`、`historical_volatility`、固定 `basis = 252` 和 `n` 推导；与历史 Sharpe/t-statistic-like 量高度接近 |
 | D02 | `direction_sequence` | `derived` | effective legs 必然交替，可由 `start_direction` 和 `structure_code` 重建 |
 | D03 | `terminal_leg_range_share` | `derived` | 若与 G05/G06 使用同一实际 log-price range，可由两者的绝对差稳定推导 |
-| V01 | `scale_stability` | `deferred` | 第一版只分别输出 40 日和 60 日结果，跨尺度一致性先用于质量验证 |
-| V02 | 单窗口 return autocorrelation | `deferred` | 40/60 个数据点的估计误差较大，不作为当前路径描述核心轴 |
+| V01 | `scale_stability` | `deferred` | 历史 40/60 日跨尺度一致性只用于质量验证；当前生产仅输出 60 日 |
+| V02 | 单窗口 return autocorrelation | `deferred` | 当前 60 个数据点的估计误差仍较大，不作为当前路径描述核心轴 |
 | V03 | variance ratio / Hurst / entropy / fractal dimension | `deferred` | 参数和样本长度敏感；只有证明存在增量信息后再考虑 |
 
 ## 6. 基础路径几何详细规格
@@ -276,7 +276,7 @@ path_efficiency = abs(D) / TV
 - 当全部 daily log returns 为 0 时，`D = 0`、`TV = 0`，按边界定义输出 `0`；
 - 达到持久化标准。它回答“每日 close 路径的总绝对运动中有多少转化为净位移”这一
   独立问题，不能由 G01、G03、G04、G05、G07、T03 或 T04 稳定推导；
-- 不依赖自适应分段或经验阈值，输出无量纲，40/60 日窗口具有相同解释；
+- 不依赖自适应分段或经验阈值，输出无量纲，不同 lookback 窗口具有相同解释；
 - 持久化 `path_efficiency`，不单独持久化公式中间量 `TV`；
 - effective-leg 版本保留为未来待审核变体，但它依赖分段并描述去噪后的结构效率，
   不属于当前 G02 daily-close 核心字段，也不阻塞当前字段持久化。
@@ -322,7 +322,7 @@ historical_volatility = 100 * sqrt(b) * s_daily
 - 达到持久化标准。它保留路径运动的绝对波动尺度，不能由 G01 净位移、G02 路径效率、
   T03 运动时间位置或 T04 运动集中度稳定推导；尤其 T03、T04 使用归一化 movement weights，
   已消除了绝对运动幅度；
-- 不依赖自适应分段或经验阈值；`basis = 252` 固定后，40/60 日窗口均输出同口径的年化
+- 不依赖自适应分段或经验阈值；`basis = 252` 固定后，不同 lookback 窗口均输出同口径的年化
   百分比点，窗口长度差异只影响估计所用样本；
 - 持久化 `historical_volatility`，不另行持久化可由它还原的中间量
   `s_daily = historical_volatility / (100 * sqrt(252))`。
@@ -470,7 +470,7 @@ terminal_leg_range_share = abs(signed_terminal_leg_range_share)
   terminal effective leg 的实际起点价格位置；
 - 本字段依赖自适应分段和 effective-leg 阈值，但这些规则同时是 v4 结构定义的组成部分，
   依赖关系明确且可随 calculation version 固定；
-- 40/60 日结果分别表示各自 lookback price range 内的相对起点位置，不宣称完全消除
+- 不同 lookback 的结果分别表示各自 price range 内的相对起点位置，不宣称完全消除
   lookback 对 range 的影响；
 - 持久化 `terminal_leg_start_position`；D03 `terminal_leg_range_share` 由 G05 和 G06
   稳定推导，不重复持久化。
@@ -526,7 +526,7 @@ terminal_breakout_distance_vol = (
 - 达到持久化标准。它回答“终点突破此前区间多远”这一独立问题；G04/G05 只能说明终点的
   排序或归一化位置，突破时通常饱和在 `0` 或 `1`，无法恢复超出区间的距离；G03 只提供
   波动尺度，也无法恢复 breakout extension；
-- 不依赖自适应分段或经验阈值，输出无量纲，40/60 日窗口具有相同的标准差倍数解释；
+- 不依赖自适应分段或经验阈值，输出无量纲，不同 lookback 窗口具有相同的标准差倍数解释；
 - 持久化最终字段，不单独持久化 `prior_high`、`prior_low`、`up_extension` 或
   `down_extension` 等计算中间量。
 
@@ -707,7 +707,7 @@ squared_movement_concentration = 1 - effective_movement_day_ratio
 - 达到持久化标准。它回答“movement 是否由少数日期主导”这一独立问题，与 T03 的
   时间位置维度互补；
 - 不能由 G03 Historical Volatility、T03 时间位置或其他 accepted 字段稳定推导；
-- 不依赖自适应分段或经验阈值，40/60 日窗口具有相同的有效贡献日期比例语义；
+- 不依赖自适应分段或经验阈值，不同 lookback 窗口具有相同的有效贡献日期比例语义；
 - 持久化 `squared_movement_concentration`，不额外持久化可由它和 `n` 推导的
   `effective_movement_day_ratio` 或 Effective Movement Day Count。
 
@@ -789,7 +789,7 @@ net_log_return / sqrt(QV)
 5. 是否依赖自适应分段或阈值参数？
 6. 是否能由其他 accepted 字段稳定推导？
 7. 是否与其他指标高度重复？
-8. 40 日和 60 日之间是否具有可比较含义？
+8. 历史 40 日和当前 60 日结果之间是否具有可比较含义？
 9. 是否需要持久化，还是只在展示时派生？
 10. 是否有至少一个手算示例和一个边界测试？
 
@@ -865,7 +865,7 @@ net_log_return / sqrt(QV)
   effective leg 第一条源 segment 的实际起点，trailing flat segments 不改变该起点，
   flat range 或无法识别 effective leg 时输出 `NULL`。D03 range share 由 G05/G06 派生。
 - 锁定窗口计数口径：`lookback_bars` 是 close observations 数量，daily return 数量为
-  `lookback_bars - 1`；40/60 bars 分别对应 39/59 个 daily returns。
+  `lookback_bars - 1`；当前 60 bars 生产窗口对应 59 个 daily returns。
 - v4 已按独立模块和独立表落地；2026-07-07 受控快照写入 364 行，其中40/60 bars 各
   182 行、50 行无 effective leg，0 行跳过，所有已持久化指标均无范围违规。
 

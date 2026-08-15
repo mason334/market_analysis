@@ -184,7 +184,7 @@ log 口径，不提前乘 100 或舍入；百分比展示由下游转换。
 
 ### 自适应趋势分段实验
 
-阶段 B 使用 40/60 bar 长窗口，在 log price 上对所有合法断点组合执行全局连续分段
+阶段 B 当前使用单一 60 bar 长窗口，在 log price 上对所有合法断点组合执行全局连续分段
 最小二乘。模型使用 linear-spline hinge basis，允许断点前后斜率变化，但要求拟合路径在
 断点处连续；拟合线不强制经过实际端点。`adaptive_trend_v3` 在固定分段数的合法组合不超过
 `exact_candidate_budget` 时执行分批精确穷举，超过预算时使用确定性 beam expansion、单断点
@@ -200,7 +200,7 @@ log 口径，不提前乘 100 或舍入；百分比展示由下游转换。
 - `trend_segment_daily`：每个自适应段的日期边界和段内趋势指标。
 - 方法：`continuous_piecewise_log_linear_deterministic_hybrid_bic`。
 - 版本：`adaptive_trend_v3`。
-- 40/60 bars 固定输出按推荐关系分别允许 4/5 段，精确搜索；交互窗口最多 250 bars、10 段。
+- 60 bars 固定输出最多允许 5 段并保持精确搜索；交互窗口最多 250 bars、10 段。
 - summary 显式保存 exact/approximate、全局最优保证、候选评估数、收敛状态和搜索审计信息。
 - 独立实验命令不会修改 `trend_daily`，也不会由 `run-indicators` 自动触发。
 
@@ -246,7 +246,7 @@ python scripts/show_trend_pattern_v4_stage1.py --legs "0.08,-0.10,0.12"
 生成页面为 `artifacts/trend_pattern_v4_stage1.html`，包含全部 40 个结构的判定数值和示例图。
 
 v4 的基础路径几何和时间组织指标由独立纯计算模块处理。`lookback_bars` 表示 close
-observations 数量，因此 40/60 bars 分别包含 39/59 个 daily returns。运行：
+observations 数量，因此当前 60 bars 生产窗口包含 59 个 daily returns。运行：
 
 ```bash
 market-analysis run-trend-pattern-v4-analysis

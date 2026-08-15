@@ -1,0 +1,1747 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="referrer" content="no-referrer">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'unsafe-inline' 'unsafe-eval' 'wasm-unsafe-eval' blob: data: https://cdnjs.cloudflare.com https://cdn.jsdelivr.net https://esm.sh https://fonts.bunny.net https://fonts.googleapis.com https://fonts.gstatic.com https://unpkg.com; style-src 'unsafe-inline' blob: data: https://cdnjs.cloudflare.com https://cdn.jsdelivr.net https://esm.sh https://fonts.bunny.net https://fonts.googleapis.com https://fonts.gstatic.com https://unpkg.com; img-src blob: data: https://cdnjs.cloudflare.com https://cdn.jsdelivr.net https://esm.sh https://fonts.bunny.net https://fonts.googleapis.com https://fonts.gstatic.com https://unpkg.com; font-src blob: data: https://cdnjs.cloudflare.com https://cdn.jsdelivr.net https://esm.sh https://fonts.bunny.net https://fonts.googleapis.com https://fonts.gstatic.com https://unpkg.com; media-src blob: data: https://cdnjs.cloudflare.com https://cdn.jsdelivr.net https://esm.sh https://fonts.bunny.net https://fonts.googleapis.com https://fonts.gstatic.com https://unpkg.com; worker-src blob:; connect-src blob: data:; frame-src 'self'; object-src 'none'; base-uri 'none'; form-action 'none'">
+<title>Fixed Grid Residual Path Sketch.Fragment</title>
+<style>:root{color-scheme:light dark;background:light-dark(rgb(255 255 255), rgb(24 24 24))}html,body{margin:0}body{box-sizing:border-box;padding:1rem;background:inherit}iframe{display:block;width:100%;height:calc(100vh - 2rem);margin:0 auto;border:0}</style>
+</head>
+<body>
+<iframe sandbox="allow-scripts" referrerpolicy="no-referrer" title="Fixed Grid Residual Path Sketch.Fragment" srcdoc="&lt;!doctype html&gt;
+&lt;html lang=&quot;en&quot;&gt;
+&lt;head&gt;
+&lt;meta charset=&quot;utf-8&quot;&gt;
+&lt;meta name=&quot;viewport&quot; content=&quot;width=device-width, initial-scale=1&quot;&gt;
+&lt;meta name=&quot;referrer&quot; content=&quot;no-referrer&quot;&gt;
+&lt;meta http-equiv=&quot;Content-Security-Policy&quot; content=&quot;default-src &#x27;none&#x27;; script-src &#x27;unsafe-inline&#x27; &#x27;unsafe-eval&#x27; &#x27;wasm-unsafe-eval&#x27; blob: data: https://cdnjs.cloudflare.com https://cdn.jsdelivr.net https://esm.sh https://fonts.bunny.net https://fonts.googleapis.com https://fonts.gstatic.com https://unpkg.com; style-src &#x27;unsafe-inline&#x27; blob: data: https://cdnjs.cloudflare.com https://cdn.jsdelivr.net https://esm.sh https://fonts.bunny.net https://fonts.googleapis.com https://fonts.gstatic.com https://unpkg.com; img-src blob: data: https://cdnjs.cloudflare.com https://cdn.jsdelivr.net https://esm.sh https://fonts.bunny.net https://fonts.googleapis.com https://fonts.gstatic.com https://unpkg.com; font-src blob: data: https://cdnjs.cloudflare.com https://cdn.jsdelivr.net https://esm.sh https://fonts.bunny.net https://fonts.googleapis.com https://fonts.gstatic.com https://unpkg.com; media-src blob: data: https://cdnjs.cloudflare.com https://cdn.jsdelivr.net https://esm.sh https://fonts.bunny.net https://fonts.googleapis.com https://fonts.gstatic.com https://unpkg.com; worker-src blob:; connect-src blob: data:; frame-src &#x27;none&#x27;; object-src &#x27;none&#x27;; base-uri &#x27;none&#x27;; form-action &#x27;none&#x27;&quot;&gt;
+&lt;title&gt;Fixed Grid Residual Path Sketch.Fragment&lt;/title&gt;
+&lt;style&gt;:root {
+  color-scheme: light dark;
+  background-color: var(
+    --background,
+    var(--color-background-primary, light-dark(rgb(255 255 255), rgb(24 24 24)))
+  ) !important;
+
+  /* Agent-facing contract; keep in sync with SKILL.md. */
+  --background: var(
+    --color-background-primary,
+    light-dark(rgb(255 255 255), rgb(24 24 24))
+  );
+  --foreground: var(
+    --color-text-primary,
+    light-dark(rgb(26 28 31), rgb(255 255 255))
+  );
+  --card: color-mix(in oklab, var(--foreground) 5%, var(--background));
+  --card-foreground: var(
+    --color-text-primary,
+    light-dark(rgb(26 28 31), rgb(255 255 255))
+  );
+  --popover: var(
+    --color-background-secondary,
+    light-dark(rgb(255 255 255), rgb(45 45 45))
+  );
+  --popover-foreground: var(
+    --color-text-primary,
+    light-dark(rgb(26 28 31), rgb(255 255 255))
+  );
+  --primary: var(
+    --color-text-info,
+    light-dark(rgb(51 156 255), rgb(131 195 255))
+  );
+  --primary-foreground: var(
+    --color-text-inverse,
+    light-dark(rgb(255 255 255), rgb(13 13 13))
+  );
+  --secondary: var(
+    --color-background-secondary,
+    light-dark(rgb(255 255 255 / 96%), rgb(54 54 54 / 96%))
+  );
+  --secondary-foreground: var(
+    --color-text-primary,
+    light-dark(rgb(26 28 31), rgb(255 255 255))
+  );
+  --muted: color-mix(in srgb, var(--foreground) 10%, transparent);
+  --muted-foreground: var(
+    --color-text-secondary,
+    light-dark(rgb(26 28 31 / 49.4%), rgb(255 255 255 / 49.8%))
+  );
+  --accent: var(
+    --color-background-info,
+    light-dark(rgb(229 242 255), rgb(13 39 63))
+  );
+  --accent-foreground: var(
+    --color-text-info,
+    light-dark(rgb(51 156 255), rgb(131 195 255))
+  );
+  --destructive: var(
+    --color-text-warning,
+    light-dark(rgb(226 85 7), rgb(255 133 73))
+  );
+  --border: var(
+    --color-border-secondary,
+    light-dark(rgb(26 28 31 / 8%), rgb(255 255 255 / 8.2%))
+  );
+  --input: var(
+    --color-border-primary,
+    light-dark(
+      rgb(26 28 31 / 11.8%),
+      color-mix(in oklab, rgb(0 0 0) 10%, transparent)
+    )
+  );
+  --ring: var(
+    --color-ring-primary,
+    light-dark(rgb(51 156 255), rgb(131 195 255 / 76%))
+  );
+  --font-size-base: var(--font-text-md-size, 14px);
+  --blue: light-dark(rgb(51 156 255), rgb(51 156 255));
+  --orange: light-dark(rgb(226 85 7), rgb(251 106 34));
+  --green: light-dark(rgb(0 162 64), rgb(64 201 119));
+  --red: light-dark(rgb(224 46 42), rgb(255 103 100));
+  --purple: light-dark(rgb(146 79 247), rgb(173 123 249));
+  --yellow: light-dark(rgb(255 195 0), rgb(255 210 64));
+  --viz-series-1: var(--primary);
+  --viz-series-2: light-dark(rgb(243 136 59), rgb(245 154 86));
+  --viz-series-3: light-dark(rgb(93 201 119), rgb(116 213 139));
+  --viz-series-4: light-dark(rgb(235 119 177), rgb(240 143 192));
+  --viz-series-5: light-dark(rgb(155 121 236), rgb(170 145 239));
+  --viz-series-6: light-dark(rgb(58 185 177), rgb(90 203 194));
+
+  /* Internal implementation variables; not part of the agent contract. */
+  --font-sans: -apple-system, system-ui, &quot;Segoe UI&quot;, sans-serif;
+  --font-mono:
+    ui-monospace, SFMono-Regular, &quot;SF Mono&quot;, Menlo, Consolas, &quot;Liberation Mono&quot;,
+    monospace;
+  --font-size-normal: max(11px, var(--font-size-base));
+  --font-size-tooltip: calc(var(--font-size-base) - 1px);
+  --font-size-small: max(11px, calc(var(--font-size-base) - 2px));
+  --font-size-h1: calc(var(--font-size-normal) * 1.7142857143);
+  --font-size-h2: calc(var(--font-size-normal) * 1.4285714286);
+  --font-size-h3: calc(var(--font-size-normal) * 1.2857142857);
+  --font-weight-normal: 430;
+  --font-weight-medium: 500;
+  --line-height-normal: calc(var(--font-size-normal) * 1.5);
+  --line-height-tooltip: calc(var(--font-size-tooltip) * 1.4285714286);
+  --line-height-small: calc(var(--font-size-small) + 4px);
+  --radius: var(--border-radius-lg, 12.5px);
+  --radius-sm: calc(var(--radius) * 0.6);
+  --radius-md: calc(var(--radius) * 0.8);
+  --radius-lg: var(--radius);
+  --radius-2xl: calc(var(--radius) * 1.6);
+  --radius-full: 9999px;
+  --shadow-sm: 0 1px 2px -1px rgb(0 0 0 / 8%);
+  --checkmark-image: url(&quot;data:image/svg+xml,%3Csvg xmlns=&#x27;http://www.w3.org/2000/svg&#x27; viewBox=&#x27;0 0 17 17&#x27;%3E%3Cpath d=&#x27;M12.8961 3.64101C13.1297 3.41418 13.4984 3.37523 13.7779 3.56581C14.0571 3.75635 14.1554 4.11331 14.0299 4.41347L13.9615 4.53847L7.71151 13.7045C7.59411 13.8767 7.4063 13.9877 7.19881 14.0072C6.99136 14.0267 6.78564 13.9533 6.63826 13.806L2.88826 10.056L2.79842 9.9457C2.6192 9.67407 2.64927 9.30496 2.88826 9.06581C3.12738 8.82669 3.49647 8.79676 3.76815 8.97597L3.8785 9.06581L7.03084 12.2182L12.8053 3.74941L12.8961 3.64101Z&#x27;/%3E%3C/svg%3E&quot;);
+
+  /* Legacy aliases; not part of the current agent contract. */
+  --viz-bg: transparent;
+  --viz-panel: var(--card);
+  --viz-border: var(--border);
+  --viz-text: var(--foreground);
+  --viz-muted: var(--muted-foreground);
+  --viz-accent: var(--primary);
+  --viz-accent-text: var(--primary-foreground);
+  --viz-accent-bg: var(--accent);
+  --viz-font-size: var(--font-size-base);
+  --viz-warning: var(--destructive);
+}
+
+:root[data-theme=&quot;light&quot;] {
+  color-scheme: light;
+}
+
+:root[data-theme=&quot;dark&quot;] {
+  color-scheme: dark;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html &gt; body {
+  /* Preserve MCP aliases for older inline renderers without creating :root cycles. */
+  --color-background-primary: var(
+    --background,
+    light-dark(rgb(255 255 255), rgb(24 24 24))
+  );
+  --color-text-primary: var(
+    --foreground,
+    light-dark(rgb(26 28 31), rgb(255 255 255))
+  );
+  --color-border-secondary: var(
+    --border,
+    light-dark(rgb(26 28 31 / 8%), rgb(255 255 255 / 8.2%))
+  );
+
+  margin: 0;
+  padding: 5px;
+  color: var(--foreground);
+  background: transparent !important;
+  font-family: var(--font-sans);
+  font-size: var(--font-size-normal);
+  font-weight: var(--font-weight-normal);
+  line-height: var(--line-height-normal);
+}
+
+a {
+  color: color-mix(in srgb, var(--viz-accent) 80%, var(--viz-text) 20%);
+  cursor: pointer;
+  font-weight: var(--font-weight-medium, 500);
+  text-decoration: none;
+  text-underline-offset: 2px;
+}
+
+a:is(:hover, :focus-visible) {
+  text-decoration-line: underline;
+  text-decoration-style: dashed;
+  text-decoration-thickness: 0.5px;
+}
+
+h1,
+h2,
+h3,
+h4,
+h5,
+h6,
+p {
+  margin-block: 0;
+}
+
+h1 {
+  font-size: var(--font-size-h1);
+  font-weight: var(--font-weight-medium);
+  line-height: 1.25;
+}
+
+h2 {
+  font-size: var(--font-size-h2);
+  font-weight: var(--font-weight-medium);
+  line-height: 1.25;
+}
+
+h3,
+h4,
+h5,
+h6 {
+  font-size: var(--font-size-h3);
+  font-weight: var(--font-weight-medium);
+  line-height: 1.3;
+}
+
+b,
+strong,
+th {
+  font-weight: var(--font-weight-medium);
+}
+
+code:not(pre code) {
+  display: inline;
+  padding: 1px 6px;
+  border-radius: var(--radius-sm);
+  corner-shape: superellipse(1.5);
+  background: var(--muted);
+  font-family: var(--font-mono);
+  font-size: 0.92em;
+  overflow-wrap: anywhere;
+  -webkit-box-decoration-break: clone;
+  box-decoration-break: clone;
+  word-break: break-word;
+}
+
+.table-responsive {
+  width: 100%;
+  overflow-x: auto;
+  scrollbar-width: thin;
+}
+
+.table {
+  width: 100%;
+  border-collapse: collapse;
+  color: var(--foreground);
+  font: inherit;
+  text-align: start;
+}
+
+.table :is(th, td) {
+  padding-block: 10px;
+  padding-inline: 0 24px;
+  overflow-wrap: anywhere;
+  border-bottom: 1px solid var(--border);
+  text-align: start;
+  vertical-align: top;
+}
+
+.table-responsive &gt; .table :is(th, td) {
+  overflow-wrap: break-word;
+}
+
+.table :is(th, td):last-child {
+  padding-inline-end: 0;
+}
+
+.table :is(caption, thead th) {
+  font-weight: 600;
+}
+
+.table thead th {
+  padding-block: 8px;
+  border-bottom-color: color-mix(in srgb, var(--foreground) 16%, transparent);
+}
+
+.table tbody tr:last-child :is(th, td) {
+  border-bottom: 0;
+}
+
+.table.table-sm :is(th, td) {
+  padding-block: 6px;
+}
+
+.table.table-sm :is(th, td):not(:last-child) {
+  padding-inline-end: 16px;
+}
+
+.table :is(.text-end, [align=&quot;right&quot;]) {
+  text-align: end;
+  font-variant-numeric: tabular-nums;
+}
+
+.table :is(.text-center, [align=&quot;center&quot;]) {
+  text-align: center;
+}
+
+.table .text-nowrap {
+  white-space: nowrap;
+}
+
+#widget {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  width: 100%;
+  padding: 0;
+  background: transparent !important;
+}
+
+.card {
+  min-width: 0;
+  padding: 12px;
+  overflow: hidden;
+  overflow-wrap: break-word;
+  border-radius: var(--radius-2xl);
+  corner-shape: superellipse(1.5);
+  color: var(--card-foreground);
+  background: var(--card);
+}
+
+#widget &gt; :not(.card) {
+  width: 100% !important;
+  max-width: none !important;
+  margin: 0 !important;
+  padding: 0 !important;
+  border: 0 !important;
+  border-radius: 0 !important;
+  background: transparent !important;
+  box-shadow: none !important;
+}
+
+.tooltip {
+  position: fixed;
+  z-index: 50;
+  top: 0;
+  left: 0;
+  width: max-content;
+  max-width: min(
+    20rem,
+    var(--tooltip-available-width, calc(100vw - 10px)),
+    calc(100vw - 10px)
+  );
+  max-height: min(
+    var(--tooltip-available-height, calc(100vh - 10px)),
+    calc(100vh - 10px)
+  );
+  padding: 4px 8px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  corner-shape: superellipse(1.5);
+  color: var(--popover-foreground);
+  background: var(--popover);
+  box-shadow: none;
+  font-size: var(--font-size-tooltip);
+  line-height: var(--line-height-tooltip);
+  overflow-wrap: break-word;
+  white-space: normal;
+  pointer-events: none;
+  user-select: none;
+}
+
+.viz-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(max(180px, 24%), 1fr));
+  gap: 10px;
+}
+
+.viz-stat {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.viz-stat-value {
+  font-size: var(--font-size-h2);
+  font-weight: var(--font-weight-medium);
+  line-height: 1.25;
+}
+
+.viz-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+}
+
+.viz-badge {
+  padding: 3px 8px;
+  border-radius: var(--radius-full);
+  color: var(--accent-foreground);
+  background: var(--accent);
+  font-weight: var(--font-weight-medium);
+}
+
+small,
+.text-small,
+.viz-badge {
+  font-size: var(--font-size-small);
+  line-height: var(--line-height-small);
+}
+
+.text-muted {
+  color: var(--muted-foreground);
+}
+
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+.viz-controls {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+
+.viz-controls &gt; .form-label {
+  display: grid;
+  min-width: min(100%, 260px);
+  flex: 1 1 280px;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: baseline;
+  gap: 2px 12px;
+  margin-bottom: 0;
+}
+
+.viz-controls &gt; .form-label &gt; :is(.form-control, .form-range, .form-select) {
+  grid-column: 1 / -1;
+}
+
+.btn,
+.form-check-input,
+.form-control,
+.form-range,
+.form-select {
+  font: inherit;
+}
+
+.btn {
+  appearance: button;
+  display: inline-flex;
+  inline-size: fit-content;
+  max-inline-size: 100%;
+  min-height: 28px;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  margin: 0;
+  padding: 0 8px;
+  -webkit-app-region: no-drag;
+  border: 1px solid var(--input);
+  border-radius: var(--radius-lg);
+  corner-shape: superellipse(1.5);
+  color: var(--secondary-foreground);
+  background: var(--secondary);
+  cursor: var(--cursor-interaction, pointer);
+  text-align: center;
+  text-decoration: none;
+  white-space: nowrap;
+  user-select: none;
+  -webkit-font-smoothing: antialiased;
+}
+
+.btn:is(.btn-block, .viz-tile) {
+  inline-size: 100%;
+}
+
+.btn.viz-tile {
+  min-width: 0;
+  overflow-wrap: anywhere;
+  white-space: normal;
+}
+
+a.btn {
+  cursor: pointer;
+  text-decoration: none;
+}
+
+.btn:not(:disabled):hover {
+  background: color-mix(in srgb, var(--foreground) 6%, var(--secondary));
+}
+
+.btn-primary {
+  border-color: transparent;
+  color: var(--primary-foreground);
+  background: var(--foreground);
+  background-clip: padding-box;
+}
+
+.btn-primary .text-muted {
+  color: color-mix(in srgb, var(--primary-foreground) 50%, transparent);
+}
+
+.btn-primary:not(:disabled):hover {
+  background: color-mix(in srgb, var(--foreground) 80%, transparent);
+  background-clip: padding-box;
+}
+
+.btn-ghost {
+  border-color: transparent;
+  color: var(--muted-foreground);
+  background: transparent;
+}
+
+.btn-ghost:not(:disabled):hover {
+  color: var(--foreground);
+  background: color-mix(in srgb, var(--foreground) 6%, var(--secondary));
+}
+
+.btn:disabled {
+  cursor: not-allowed;
+  opacity: 0.4;
+}
+
+[data-lucide] {
+  stroke-width: 1.6;
+}
+
+.form-label {
+  display: block;
+  margin-bottom: 6px;
+  color: var(--foreground);
+}
+
+.form-control {
+  display: block;
+  width: 100%;
+  min-height: 28px;
+  padding: 0 8px;
+  outline: none;
+  border: 1px solid var(--input);
+  border-radius: var(--radius-lg);
+  corner-shape: superellipse(1.5);
+  color: var(--foreground);
+  background: var(--secondary);
+}
+
+.form-control::placeholder {
+  color: var(--muted-foreground);
+}
+
+.form-control[type=&quot;file&quot;] {
+  padding: 0;
+  overflow: hidden;
+  cursor: var(--cursor-interaction, pointer);
+}
+
+.form-control[type=&quot;file&quot;]::file-selector-button {
+  min-height: 26px;
+  margin-right: 8px;
+  padding: 0 8px;
+  border: 0;
+  border-right: 1px solid var(--input);
+  color: var(--secondary-foreground);
+  background: var(--secondary);
+  cursor: inherit;
+  font: inherit;
+}
+
+.form-control[type=&quot;file&quot;]:not(:disabled):hover::file-selector-button {
+  background: color-mix(in srgb, var(--foreground) 6%, var(--secondary));
+}
+
+.form-control-color[type=&quot;color&quot;] {
+  width: 40px;
+  height: 28px;
+  padding: 3px;
+  cursor: var(--cursor-interaction, pointer);
+}
+
+.form-control-color[type=&quot;color&quot;]::-webkit-color-swatch-wrapper {
+  padding: 0;
+}
+
+.form-control-color[type=&quot;color&quot;]::-webkit-color-swatch {
+  border: 0;
+  border-radius: calc(var(--radius-lg) - 4px);
+  corner-shape: superellipse(1.5);
+}
+
+textarea.form-control {
+  height: auto;
+  min-height: 72px;
+  padding: 8px 10px;
+  resize: vertical;
+}
+
+.form-control:focus-visible {
+  border-color: var(--ring);
+  box-shadow: inset 0 0 0 1px var(--ring);
+}
+
+.form-control:disabled,
+.form-select:disabled {
+  cursor: not-allowed;
+  opacity: 0.4;
+}
+
+.form-select {
+  appearance: none;
+  display: block;
+  width: 100%;
+  min-height: 28px;
+  margin: 0;
+  padding: 0 32px 0 8px;
+  outline: none;
+  border: 1px solid var(--input);
+  border-radius: var(--radius-lg);
+  corner-shape: superellipse(1.5);
+  color: var(--foreground);
+  background-color: var(--secondary);
+  background-image:
+    linear-gradient(45deg, transparent 50%, var(--muted-foreground) 50%),
+    linear-gradient(135deg, var(--muted-foreground) 50%, transparent 50%);
+  background-position:
+    calc(100% - 14px) 50%,
+    calc(100% - 10px) 50%;
+  background-repeat: no-repeat;
+  background-size: 4px 4px;
+  cursor: var(--cursor-interaction, default);
+}
+
+.form-select:not(:disabled):hover {
+  background-color: color-mix(in srgb, var(--foreground) 6%, var(--secondary));
+}
+
+.form-select:focus-visible {
+  border-color: var(--ring);
+  box-shadow: inset 0 0 0 1px var(--ring);
+}
+
+.form-check {
+  display: flex;
+  min-height: 20px;
+  align-items: center;
+  gap: 6px;
+}
+
+.form-check-input {
+  appearance: none;
+  width: 14px;
+  height: 14px;
+  flex: 0 0 auto;
+  margin: 0;
+  border: 1px solid var(--input);
+  color: var(--primary-foreground);
+  background-color: transparent;
+  cursor: var(--cursor-interaction, default);
+  transition:
+    background-color 150ms,
+    border-color 150ms,
+    box-shadow 150ms;
+}
+
+.form-check:not(.form-switch) .form-check-input[type=&quot;checkbox&quot;] {
+  border-color: var(--input);
+  border-radius: var(--radius-sm);
+  corner-shape: superellipse(1.5);
+  background-color: var(--secondary);
+  box-shadow: var(--shadow-sm);
+}
+
+.form-check:not(.form-switch)
+  .form-check-input:not(:disabled):not(:checked):hover {
+  background-color: var(--card);
+}
+
+.form-check:not(.form-switch) .form-check-input[type=&quot;checkbox&quot;]:checked {
+  border-color: var(--primary);
+  background-color: var(--primary);
+}
+
+.form-check:not(.form-switch)
+  .form-check-input[type=&quot;checkbox&quot;]:checked::before {
+  display: block;
+  width: 100%;
+  height: 100%;
+  background: var(--primary-foreground);
+  content: &quot;&quot;;
+  mask: var(--checkmark-image) center / 12px 12px no-repeat;
+}
+
+.form-check-input[type=&quot;radio&quot;] {
+  width: 14px;
+  height: 14px;
+  border-radius: var(--radius-full);
+}
+
+.form-check-input[type=&quot;radio&quot;]:checked {
+  border: 2px solid var(--primary);
+  background:
+    radial-gradient(circle, var(--primary-foreground) 0 2.5px, transparent 3px),
+    var(--primary);
+}
+
+.form-check:not(.form-switch) .form-check-input:focus-visible {
+  outline: 2px solid var(--ring);
+  outline-offset: 2px;
+}
+
+.form-check:not(.form-switch) .form-check-input:disabled {
+  cursor: not-allowed;
+  pointer-events: none;
+}
+
+.form-check:not(.form-switch) .form-check-input:disabled + .form-check-label {
+  cursor: not-allowed;
+}
+
+.form-switch .form-check-input:disabled,
+.form-switch .form-check-input:disabled + .form-check-label {
+  cursor: not-allowed;
+  opacity: 0.6;
+}
+
+.form-check-label {
+  color: var(--foreground);
+  cursor: var(--cursor-interaction, default);
+}
+
+.form-switch .form-check-input {
+  position: relative;
+  width: 32px;
+  height: 20px;
+  border: 0;
+  border-radius: var(--radius-full);
+  background: var(--muted);
+  box-shadow: none;
+  transition: background-color 200ms cubic-bezier(0, 0, 0.2, 1);
+}
+
+.form-switch .form-check-input::before {
+  position: absolute;
+  top: 50%;
+  left: 0;
+  width: 16px;
+  height: 16px;
+  box-sizing: border-box;
+  border: 1px solid light-dark(var(--primary-foreground), var(--foreground));
+  border-radius: var(--radius-full);
+  background: light-dark(var(--primary-foreground), var(--foreground));
+  box-shadow: var(--shadow-sm);
+  content: &quot;&quot;;
+  transform: translate(2px, -50%);
+  transition: transform 200ms cubic-bezier(0, 0, 0.2, 1);
+}
+
+.form-switch .form-check-input:checked {
+  background: var(--primary);
+}
+
+.form-switch .form-check-input:checked::before {
+  transform: translate(14px, -50%);
+}
+
+.form-switch .form-check-input:focus-visible {
+  box-shadow: 0 0 0 2px var(--ring);
+}
+
+.form-range {
+  appearance: none;
+  display: block;
+  width: 100%;
+  height: 28px;
+  flex: 1;
+  margin: 0;
+  padding: 0;
+  outline: none;
+  border: 0;
+  accent-color: var(--primary);
+  background: linear-gradient(
+      color-mix(in srgb, var(--foreground) 7%, transparent),
+      color-mix(in srgb, var(--foreground) 7%, transparent)
+    )
+    center / 100% 2px no-repeat;
+}
+
+.form-range::-webkit-slider-runnable-track {
+  height: 28px;
+  background: transparent;
+}
+
+.form-range::-webkit-slider-thumb {
+  appearance: none;
+  width: 20px;
+  height: 20px;
+  margin-top: 4px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-full);
+  background: light-dark(var(--primary-foreground), var(--foreground));
+}
+
+.form-range:focus-visible::-webkit-slider-thumb {
+  border-color: var(--ring);
+  box-shadow: inset 0 0 0 1px var(--ring);
+}
+
+.form-range::-moz-range-track {
+  height: 28px;
+  background: transparent;
+}
+
+.form-range::-moz-range-thumb {
+  width: 20px;
+  height: 20px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-full);
+  background: light-dark(var(--primary-foreground), var(--foreground));
+}
+
+.form-range:focus-visible::-moz-range-thumb {
+  border-color: var(--ring);
+  box-shadow: inset 0 0 0 1px var(--ring);
+}
+
+.form-range:disabled {
+  cursor: not-allowed;
+  opacity: 0.4;
+}
+
+.btn:not(.btn-primary, .viz-tile):is(
+    [aria-pressed=&quot;true&quot;],
+    [aria-selected=&quot;true&quot;],
+    .is-selected
+  ) {
+  border-color: var(--primary);
+  color: var(--primary-foreground);
+  background: var(--primary);
+}
+
+.btn.viz-tile:is([aria-pressed=&quot;true&quot;], [aria-selected=&quot;true&quot;], .is-selected) {
+  border-color: var(--primary);
+  box-shadow: inset 0 0 0 1px var(--primary);
+}
+
+.btn:focus-visible {
+  outline: 2px solid var(--ring);
+  outline-offset: 2px;
+}
+
+svg {
+  display: block;
+  max-width: 100%;
+  height: auto;
+}
+
+#widget &gt; svg {
+  width: 100%;
+}
+
+/* Model-authored chart rules can otherwise stretch icons after these styles load. */
+svg.lucide {
+  display: block;
+  width: 16px !important;
+  height: 16px !important;
+  flex: none;
+  margin: 0 !important;
+  stroke-width: 1.6;
+}
+
+.text-warning,
+.text-destructive {
+  color: var(--destructive);
+}
+
+html&gt;body{padding:0}&lt;/style&gt;
+&lt;/head&gt;
+&lt;body&gt;
+&lt;div id=&quot;fg-residual-sketch&quot;&gt;
+  &lt;style&gt;
+    #fg-residual-sketch {
+      position: relative;
+      color: var(--foreground);
+      width: 100%;
+    }
+    #fg-residual-sketch .fg-flow {
+      display: grid;
+      grid-template-columns: repeat(4, minmax(0, 1fr));
+      gap: 8px;
+      margin: 10px 0 14px;
+    }
+    #fg-residual-sketch .fg-flow-step {
+      min-width: 0;
+      padding: 8px 10px;
+      border-top: 2px solid var(--border);
+      color: var(--muted-foreground);
+    }
+    #fg-residual-sketch .fg-flow-step strong {
+      display: block;
+      color: var(--foreground);
+      font-weight: 500;
+      margin-bottom: 2px;
+    }
+    #fg-residual-sketch .fg-chart {
+      width: 100%;
+      min-width: 0;
+      margin-top: 12px;
+    }
+    #fg-residual-sketch .fg-chart-title {
+      color: var(--foreground);
+      font-weight: 500;
+      margin-bottom: 4px;
+    }
+    #fg-residual-sketch .fg-meta {
+      margin: 8px 0 2px;
+      color: var(--muted-foreground);
+    }
+    #fg-residual-sketch .fg-meta strong {
+      color: var(--foreground);
+      font-weight: 500;
+    }
+    #fg-residual-sketch .fg-series-controls {
+      margin-top: 8px;
+    }
+    #fg-residual-sketch .fg-swatch {
+      width: 16px;
+      height: 3px;
+      display: inline-block;
+      background: var(--border);
+    }
+    #fg-residual-sketch .fg-swatch.actual { background: var(--viz-series-1); }
+    #fg-residual-sketch .fg-swatch.recon { background: var(--viz-series-2); }
+    #fg-residual-sketch .fg-swatch.anchor {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      background: var(--viz-series-3);
+    }
+    #fg-residual-sketch .fg-swatch.baseline {
+      height: 0;
+      background: transparent;
+      border-top: 2px dashed var(--viz-series-4);
+    }
+    #fg-residual-sketch .fg-chart svg {
+      display: block;
+      width: 100%;
+      overflow: visible;
+    }
+    #fg-residual-sketch .fg-chart .domain,
+    #fg-residual-sketch .fg-chart .tick line {
+      stroke: var(--border);
+    }
+    #fg-residual-sketch .fg-chart .tick text,
+    #fg-residual-sketch .fg-chart text {
+      fill: var(--foreground);
+      font-size: 12px;
+    }
+    #fg-residual-sketch .fg-chart .grid line {
+      stroke: var(--border);
+      stroke-opacity: 0.55;
+    }
+    #fg-residual-sketch .tooltip {
+      position: absolute;
+      pointer-events: none;
+      z-index: 10;
+      max-width: 250px;
+      padding: 8px 10px;
+      background: var(--popover);
+      color: var(--popover-foreground);
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      box-shadow: 0 4px 16px color-mix(in srgb, var(--foreground) 14%, transparent);
+      display: none;
+    }
+    #fg-residual-sketch .tooltip-row {
+      display: flex;
+      justify-content: space-between;
+      gap: 14px;
+      white-space: nowrap;
+    }
+    #fg-residual-sketch .tooltip-row + .tooltip-row { margin-top: 3px; }
+    #fg-residual-sketch .tooltip-key {
+      color: var(--muted-foreground);
+    }
+    @media (max-width: 520px) {
+      #fg-residual-sketch .fg-flow { grid-template-columns: 1fr 1fr; }
+      #fg-residual-sketch .viz-controls &gt; label,
+      #fg-residual-sketch .viz-controls &gt; .form-check { width: 100%; }
+    }
+  &lt;/style&gt;
+
+  &lt;h2&gt;固定网格残差路径草图&lt;/h2&gt;
+
+  &lt;div class=&quot;fg-flow&quot; aria-label=&quot;算法流程&quot;&gt;
+    &lt;div class=&quot;fg-flow-step&quot;&gt;&lt;strong&gt;1 · 实际路径 x&lt;sub&gt;t&lt;/sub&gt;&lt;/strong&gt;&lt;span class=&quot;text-small&quot;&gt;t = 0…59，起点归零的 log-price&lt;/span&gt;&lt;/div&gt;
+    &lt;div class=&quot;fg-flow-step&quot;&gt;&lt;strong&gt;2 · 起终点基线 b&lt;sub&gt;t&lt;/sub&gt;&lt;/strong&gt;&lt;span class=&quot;text-small&quot;&gt;b&lt;sub&gt;t&lt;/sub&gt; = x&lt;sub&gt;0&lt;/sub&gt; + t(x&lt;sub&gt;59&lt;/sub&gt; − x&lt;sub&gt;0&lt;/sub&gt;)/59&lt;/span&gt;&lt;/div&gt;
+    &lt;div class=&quot;fg-flow-step&quot;&gt;&lt;strong&gt;3 · 固定残差 e&lt;sub&gt;j&lt;/sub&gt;&lt;/strong&gt;&lt;span class=&quot;text-small&quot;&gt;j = 0…K；a&lt;sub&gt;j&lt;/sub&gt; = round(59j/K)，e&lt;sub&gt;j&lt;/sub&gt; = x&lt;sub&gt;aⱼ&lt;/sub&gt; − b&lt;sub&gt;aⱼ&lt;/sub&gt;&lt;/span&gt;&lt;/div&gt;
+    &lt;div class=&quot;fg-flow-step&quot;&gt;&lt;strong&gt;4 · 重建草图 x̂&lt;sub&gt;t&lt;/sub&gt;&lt;/strong&gt;&lt;span class=&quot;text-small&quot;&gt;b&lt;sub&gt;t&lt;/sub&gt; + e&lt;sub&gt;j&lt;/sub&gt; 的分段线性插值&lt;/span&gt;&lt;/div&gt;
+  &lt;/div&gt;
+
+  &lt;div class=&quot;viz-controls&quot; aria-label=&quot;模拟参数&quot;&gt;
+    &lt;label class=&quot;form-label&quot; for=&quot;fg-scenario&quot;&gt;模拟路径
+      &lt;select id=&quot;fg-scenario&quot; class=&quot;form-select&quot;&gt;
+        &lt;option value=&quot;deep-v&quot;&gt;同指标 A · 深 V&lt;/option&gt;
+        &lt;option value=&quot;chop&quot;&gt;同指标 B · 震荡突破&lt;/option&gt;
+        &lt;option value=&quot;double-turn&quot;&gt;双转折&lt;/option&gt;
+        &lt;option value=&quot;terminal-shock&quot;&gt;末端冲击&lt;/option&gt;
+      &lt;/select&gt;
+    &lt;/label&gt;
+    &lt;label class=&quot;form-label&quot; for=&quot;fg-k&quot;&gt;固定网格段数 K
+      &lt;select id=&quot;fg-k&quot; class=&quot;form-select&quot;&gt;
+        &lt;option value=&quot;6&quot;&gt;6&lt;/option&gt;
+        &lt;option value=&quot;8&quot;&gt;8&lt;/option&gt;
+        &lt;option value=&quot;12&quot; selected&gt;12&lt;/option&gt;
+        &lt;option value=&quot;15&quot;&gt;15&lt;/option&gt;
+      &lt;/select&gt;
+    &lt;/label&gt;
+    &lt;div class=&quot;form-check form-switch&quot;&gt;
+      &lt;input id=&quot;fg-tail&quot; class=&quot;form-check-input&quot; type=&quot;checkbox&quot;&gt;
+      &lt;label class=&quot;form-check-label&quot; for=&quot;fg-tail&quot;&gt;尾部加密：加入 Day 58 锚点&lt;/label&gt;
+    &lt;/div&gt;
+  &lt;/div&gt;
+
+  &lt;div class=&quot;viz-row fg-series-controls&quot; aria-label=&quot;算法图层&quot;&gt;
+    &lt;button type=&quot;button&quot; class=&quot;btn btn-ghost&quot; data-layer=&quot;actual&quot; aria-pressed=&quot;true&quot;&gt;&lt;span class=&quot;fg-swatch actual&quot;&gt;&lt;/span&gt;1 实际路径&lt;/button&gt;
+    &lt;button type=&quot;button&quot; class=&quot;btn btn-ghost&quot; data-layer=&quot;baseline&quot; aria-pressed=&quot;true&quot;&gt;&lt;span class=&quot;fg-swatch baseline&quot;&gt;&lt;/span&gt;2 起终点基线&lt;/button&gt;
+    &lt;button type=&quot;button&quot; class=&quot;btn btn-ghost&quot; data-layer=&quot;anchors&quot; aria-pressed=&quot;true&quot;&gt;&lt;span class=&quot;fg-swatch anchor&quot;&gt;&lt;/span&gt;3 残差锚点&lt;/button&gt;
+    &lt;button type=&quot;button&quot; class=&quot;btn btn-ghost&quot; data-layer=&quot;recon&quot; aria-pressed=&quot;true&quot;&gt;&lt;span class=&quot;fg-swatch recon&quot;&gt;&lt;/span&gt;4 重建路径&lt;/button&gt;
+  &lt;/div&gt;
+
+  &lt;div id=&quot;fg-meta&quot; class=&quot;viz-row fg-meta&quot; aria-live=&quot;polite&quot;&gt;&lt;/div&gt;
+  &lt;div id=&quot;fg-collision-note&quot; class=&quot;fg-meta text-small&quot;&gt;&lt;/div&gt;
+  &lt;div id=&quot;fg-fingerprint&quot; class=&quot;fg-meta text-small&quot;&gt;&lt;/div&gt;
+
+  &lt;section class=&quot;fg-chart&quot; aria-labelledby=&quot;fg-price-title&quot;&gt;
+    &lt;div id=&quot;fg-price-title&quot; class=&quot;fg-chart-title&quot;&gt;实际路径、基线、固定锚点与重建草图&lt;/div&gt;
+    &lt;div id=&quot;fg-price-chart&quot;&gt;&lt;/div&gt;
+  &lt;/section&gt;
+
+  &lt;section class=&quot;fg-chart&quot; aria-labelledby=&quot;fg-residual-title&quot;&gt;
+    &lt;div id=&quot;fg-residual-title&quot; class=&quot;fg-chart-title&quot;&gt;残差空间：完整残差与真正保存的锚点值&lt;/div&gt;
+    &lt;div id=&quot;fg-residual-chart&quot;&gt;&lt;/div&gt;
+  &lt;/section&gt;
+
+  &lt;div id=&quot;fg-tooltip&quot; class=&quot;tooltip&quot; role=&quot;tooltip&quot;&gt;&lt;/div&gt;
+  &lt;div id=&quot;fg-summary&quot; class=&quot;sr-only&quot; aria-live=&quot;polite&quot;&gt;&lt;/div&gt;
+
+  &lt;script src=&quot;https://cdn.jsdelivr.net/npm/d3@7.9.0/dist/d3.min.js&quot;&gt;&lt;/script&gt;
+  &lt;script&gt;
+    (() =&gt; {
+      const root = document.getElementById(&#x27;fg-residual-sketch&#x27;);
+      const scenarioSelect = root.querySelector(&#x27;#fg-scenario&#x27;);
+      const kSelect = root.querySelector(&#x27;#fg-k&#x27;);
+      const tailToggle = root.querySelector(&#x27;#fg-tail&#x27;);
+      const meta = root.querySelector(&#x27;#fg-meta&#x27;);
+      const collisionNote = root.querySelector(&#x27;#fg-collision-note&#x27;);
+      const fingerprint = root.querySelector(&#x27;#fg-fingerprint&#x27;);
+      const summary = root.querySelector(&#x27;#fg-summary&#x27;);
+      const tooltip = root.querySelector(&#x27;#fg-tooltip&#x27;);
+      const reducedMotion = window.matchMedia(&#x27;(prefers-reduced-motion: reduce)&#x27;);
+      const layerState = { actual: true, baseline: true, anchors: true, recon: true };
+      let current = null;
+
+      const cumulative = (returns) =&gt; {
+        const values = [0];
+        returns.forEach((value) =&gt; values.push(values[values.length - 1] + value));
+        return values;
+      };
+
+      const interpolateControlPoints = (points) =&gt; {
+        const values = [];
+        for (let t = 0; t &lt; 60; t += 1) {
+          let right = 1;
+          while (right &lt; points.length - 1 &amp;&amp; t &gt; points[right][0]) right += 1;
+          const left = right - 1;
+          const [t0, y0] = points[left];
+          const [t1, y1] = points[right];
+          const ratio = t1 === t0 ? 0 : (t - t0) / (t1 - t0);
+          values.push(y0 + ratio * (y1 - y0));
+        }
+        return values;
+      };
+
+      const scenarios = {
+        &#x27;deep-v&#x27;: {
+          label: &#x27;同指标 A · 深 V&#x27;,
+          values: () =&gt; cumulative([
+            ...Array(29).fill(-0.01),
+            ...Array(30).fill(0.01)
+          ]),
+          collision: &#x27;A 与 B 的 G01/G02/G03/G04/G05/G07/T03/T04 完全相同，但固定锚点序列不同。&#x27;
+        },
+        chop: {
+          label: &#x27;同指标 B · 震荡突破&#x27;,
+          values: () =&gt; cumulative([
+            ...Array.from({ length: 58 }, (_, index) =&gt; index % 2 === 0 ? -0.01 : 0.01),
+            0.01
+          ]),
+          collision: &#x27;A 与 B 的 G01/G02/G03/G04/G05/G07/T03/T04 完全相同，但固定锚点序列不同。&#x27;
+        },
+        &#x27;double-turn&#x27;: {
+          label: &#x27;双转折&#x27;,
+          values: () =&gt; interpolateControlPoints([[0, 0], [16, 0.18], [35, -0.12], [59, 0.09]])
+            .map((value, t) =&gt; value + 0.008 * Math.sin(Math.PI * t / 59) * Math.sin(2 * Math.PI * t / 9)),
+          collision: &#x27;固定网格保留两次主要方向变化；网格越密，局部拐点越接近实际路径。&#x27;
+        },
+        &#x27;terminal-shock&#x27;: {
+          label: &#x27;末端冲击&#x27;,
+          values: () =&gt; interpolateControlPoints([[0, 0], [20, 0.02], [40, 0.005], [54, 0.015], [58, 0.018], [59, 0.19]])
+            .map((value, t) =&gt; value + 0.006 * Math.sin(Math.PI * t / 59) * Math.sin(2 * Math.PI * t / 20)),
+          collision: &#x27;规则网格会把最后一天冲击向前摊入最后一段；加入 Day 58 尾部锚点可显著减少这种失真。&#x27;
+        }
+      };
+
+      const sampleStd = (values) =&gt; {
+        const returns = values.slice(1).map((value, index) =&gt; value - values[index]);
+        const mean = d3.mean(returns);
+        return Math.sqrt(d3.sum(returns, (value) =&gt; (value - mean) ** 2) / (returns.length - 1));
+      };
+
+      const pathMetrics = (values) =&gt; {
+        const returns = values.slice(1).map((value, index) =&gt; value - values[index]);
+        const n = returns.length;
+        const displacement = values[n] - values[0];
+        const totalVariation = d3.sum(returns, (value) =&gt; Math.abs(value));
+        const dailyStd = sampleStd(values);
+        const terminal = values[n];
+        const prior = values.slice(0, n);
+        const priorHigh = d3.max(prior);
+        const priorLow = d3.min(prior);
+        const fullLow = d3.min(values);
+        const fullHigh = d3.max(values);
+        const fullRange = fullHigh - fullLow;
+        const rank = d3.sum(prior, (value) =&gt; value &lt; terminal ? 1 : value === terminal ? 0.5 : 0) / n;
+        const extension = Math.max(terminal - priorHigh, 0) - Math.max(priorLow - terminal, 0);
+        const qv = d3.sum(returns, (value) =&gt; value ** 2);
+        const weights = qv === 0 ? returns.map(() =&gt; 0) : returns.map((value) =&gt; value ** 2 / qv);
+        const herfindahl = d3.sum(weights, (value) =&gt; value ** 2);
+        return {
+          G01: displacement,
+          G02: totalVariation === 0 ? 0 : Math.abs(displacement) / totalVariation,
+          G03: 100 * Math.sqrt(252) * dailyStd,
+          G04: rank,
+          G05: fullRange === 0 ? 0.5 : (terminal - fullLow) / fullRange,
+          G07: extension === 0 ? 0 : dailyStd === 0 ? null : extension / dailyStd,
+          T03: qv === 0 ? 0.5 : d3.sum(weights, (weight, index) =&gt; ((index + 1) - 0.5) * weight / n),
+          T04: qv === 0 ? 0 : Math.max(0, 1 - 1 / (n * herfindahl))
+        };
+      };
+
+      const linearAt = (points, xValue) =&gt; {
+        if (xValue &lt;= points[0].t) return points[0].value;
+        if (xValue &gt;= points[points.length - 1].t) return points[points.length - 1].value;
+        let right = 1;
+        while (right &lt; points.length &amp;&amp; xValue &gt; points[right].t) right += 1;
+        const left = right - 1;
+        const ratio = (xValue - points[left].t) / (points[right].t - points[left].t);
+        return points[left].value + ratio * (points[right].value - points[left].value);
+      };
+
+      const interpolateSamples = (values, xValue) =&gt; {
+        const left = Math.max(0, Math.min(58, Math.floor(xValue)));
+        const right = Math.min(59, left + 1);
+        const ratio = xValue - left;
+        return values[left] + ratio * (values[right] - values[left]);
+      };
+
+      const buildModel = () =&gt; {
+        const scenario = scenarios[scenarioSelect.value];
+        const actual = scenario.values();
+        const K = Number(kSelect.value);
+        const anchorIndices = Array.from({ length: K + 1 }, (_, j) =&gt; Math.round(59 * j / K));
+        if (tailToggle.checked &amp;&amp; !anchorIndices.includes(58)) anchorIndices.push(58);
+        anchorIndices.sort((a, b) =&gt; a - b);
+
+        const displacement = actual[59] - actual[0];
+        const baseline = actual.map((_, t) =&gt; actual[0] + t * displacement / 59);
+        const residual = actual.map((value, t) =&gt; value - baseline[t]);
+        const anchors = anchorIndices.map((t) =&gt; ({ t, value: residual[t] }));
+        const residualHat = actual.map((_, t) =&gt; linearAt(anchors, t));
+        const recon = baseline.map((value, t) =&gt; value + residualHat[t]);
+        const priceErrors = recon.map((value, t) =&gt; 100 * (Math.exp(value - actual[t]) - 1));
+        const rmse = Math.sqrt(d3.mean(priceErrors, (value) =&gt; value ** 2));
+        const maxError = d3.max(priceErrors, (value) =&gt; Math.abs(value));
+        const dailyStd = sampleStd(actual);
+        const nrmse = dailyStd === 0
+          ? 0
+          : Math.sqrt(d3.mean(actual.map((value, t) =&gt; (value - recon[t]) ** 2))) / (dailyStd * Math.sqrt(59));
+
+        return {
+          scenario,
+          K,
+          actual,
+          baseline,
+          residual,
+          anchors,
+          residualHat,
+          recon,
+          priceErrors,
+          rmse,
+          maxError,
+          nrmse,
+          metrics: pathMetrics(actual),
+          storedValues: anchors.length - 2
+        };
+      };
+
+      const transitionFor = (selection, animate) =&gt; {
+        if (!animate || reducedMotion.matches) return selection;
+        return selection.transition().duration(320).ease(d3.easeCubicOut);
+      };
+
+      const showTooltip = (event, rows) =&gt; {
+        tooltip.innerHTML = rows.map(([key, value]) =&gt;
+          `&lt;div class=&quot;tooltip-row&quot;&gt;&lt;span class=&quot;tooltip-key&quot;&gt;${key}&lt;/span&gt;&lt;span&gt;${value}&lt;/span&gt;&lt;/div&gt;`
+        ).join(&#x27;&#x27;);
+        tooltip.style.display = &#x27;block&#x27;;
+        const rootRect = root.getBoundingClientRect();
+        const tooltipRect = tooltip.getBoundingClientRect();
+        let left = event.clientX - rootRect.left + 12;
+        let top = event.clientY - rootRect.top + 12;
+        if (left + tooltipRect.width &gt; rootRect.width - 4) left -= tooltipRect.width + 24;
+        if (top + tooltipRect.height &gt; rootRect.height - 4) top -= tooltipRect.height + 24;
+        tooltip.style.left = `${Math.max(4, left)}px`;
+        tooltip.style.top = `${Math.max(4, top)}px`;
+      };
+
+      const hideTooltip = () =&gt; { tooltip.style.display = &#x27;none&#x27;; };
+
+      const drawChart = (containerId, type, animate) =&gt; {
+        const container = root.querySelector(containerId);
+        const width = Math.max(320, container.clientWidth || 736);
+        const height = type === &#x27;price&#x27; ? 330 : 250;
+        const margin = { top: 24, right: 22, bottom: 52, left: 70 };
+        const innerWidth = width - margin.left - margin.right;
+        const innerHeight = height - margin.top - margin.bottom;
+        const svg = d3.select(container).selectAll(&#x27;svg&#x27;).data([null]).join(&#x27;svg&#x27;)
+          .attr(&#x27;viewBox&#x27;, `0 0 ${width} ${height}`)
+          .attr(&#x27;role&#x27;, &#x27;img&#x27;)
+          .attr(&#x27;aria-label&#x27;, type === &#x27;price&#x27;
+            ? `${current.scenario.label} 的实际路径、基线、锚点和重建路径`
+            : `${current.scenario.label} 的完整残差、锚点和插值残差`);
+
+        svg.selectAll(&#x27;title&#x27;).data([null]).join(&#x27;title&#x27;)
+          .text(type === &#x27;price&#x27; ? &#x27;实际路径与固定网格重建&#x27; : &#x27;残差锚点与插值&#x27;);
+        svg.selectAll(&#x27;desc&#x27;).data([null]).join(&#x27;desc&#x27;)
+          .text(type === &#x27;price&#x27;
+            ? &#x27;横轴为窗口内交易日，纵轴为相对起点的累计对数价格变化百分比。&#x27;
+            : &#x27;横轴为窗口内交易日，纵轴为实际路径相对起终点直线的残差百分比。&#x27;);
+
+        const plot = svg.selectAll(&#x27;g.plot&#x27;).data([null]).join(&#x27;g&#x27;)
+          .attr(&#x27;class&#x27;, &#x27;plot&#x27;)
+          .attr(&#x27;transform&#x27;, `translate(${margin.left},${margin.top})`);
+        const x = d3.scaleLinear().domain([0, 59]).range([0, innerWidth]);
+
+        const valuesForDomain = type === &#x27;price&#x27;
+          ? [
+              ...(layerState.actual ? current.actual : []),
+              ...(layerState.baseline ? current.baseline : []),
+              ...(layerState.recon ? current.recon : []),
+              ...(layerState.anchors ? current.anchors.map((d) =&gt; current.baseline[d.t] + d.value) : [])
+            ]
+          : [
+              0,
+              ...(layerState.anchors ? current.residual : []),
+              ...(layerState.recon ? current.residualHat : [])
+            ];
+        const domainValues = valuesForDomain.length &gt; 1 ? valuesForDomain : [0, 0.01];
+        const extent = d3.extent(domainValues);
+        const span = Math.max(0.01, extent[1] - extent[0]);
+        const y = d3.scaleLinear()
+          .domain([extent[0] - span * 0.12, extent[1] + span * 0.12])
+          .nice()
+          .range([innerHeight, 0]);
+
+        const tickCount = width &lt; 430 ? 4 : 7;
+        const xAxis = d3.axisBottom(x).ticks(tickCount).tickFormat((value) =&gt; `D${Math.round(value)}`);
+        const yAxis = d3.axisLeft(y).ticks(6).tickFormat((value) =&gt; `${(100 * value).toFixed(0)}%`);
+        plot.selectAll(&#x27;g.x-axis&#x27;).data([null]).join(&#x27;g&#x27;)
+          .attr(&#x27;class&#x27;, &#x27;x-axis&#x27;)
+          .attr(&#x27;transform&#x27;, `translate(0,${innerHeight})`)
+          .call(xAxis);
+        plot.selectAll(&#x27;g.y-axis&#x27;).data([null]).join(&#x27;g&#x27;)
+          .attr(&#x27;class&#x27;, &#x27;y-axis&#x27;)
+          .call(yAxis);
+        plot.selectAll(&#x27;g.grid&#x27;).data([null]).join(&#x27;g&#x27;)
+          .attr(&#x27;class&#x27;, &#x27;grid&#x27;)
+          .call(d3.axisLeft(y).ticks(6).tickSize(-innerWidth).tickFormat(&#x27;&#x27;))
+          .call((g) =&gt; g.select(&#x27;.domain&#x27;).remove());
+
+        plot.selectAll(&#x27;rect[data-chart-frame]&#x27;).data([null]).join(&#x27;rect&#x27;)
+          .attr(&#x27;data-chart-frame&#x27;, &#x27;&#x27;)
+          .attr(&#x27;x&#x27;, 0).attr(&#x27;y&#x27;, 0)
+          .attr(&#x27;width&#x27;, innerWidth).attr(&#x27;height&#x27;, innerHeight)
+          .attr(&#x27;fill&#x27;, &#x27;none&#x27;).attr(&#x27;stroke&#x27;, &#x27;var(--border)&#x27;);
+
+        svg.selectAll(&#x27;text.x-title&#x27;).data([null]).join(&#x27;text&#x27;)
+          .attr(&#x27;class&#x27;, &#x27;axis-title x-title&#x27;)
+          .attr(&#x27;data-axis&#x27;, &#x27;x&#x27;)
+          .attr(&#x27;x&#x27;, margin.left + innerWidth / 2)
+          .attr(&#x27;y&#x27;, height - 8)
+          .attr(&#x27;text-anchor&#x27;, &#x27;middle&#x27;)
+          .text(&#x27;窗口位置（交易日）&#x27;);
+        svg.selectAll(&#x27;text.y-title&#x27;).data([null]).join(&#x27;text&#x27;)
+          .attr(&#x27;class&#x27;, &#x27;axis-title y-title&#x27;)
+          .attr(&#x27;data-axis&#x27;, &#x27;y&#x27;)
+          .attr(&#x27;transform&#x27;, `translate(16,${margin.top + innerHeight / 2}) rotate(-90)`)
+          .attr(&#x27;text-anchor&#x27;, &#x27;middle&#x27;)
+          .text(type === &#x27;price&#x27; ? &#x27;累计 log-price 变化（%）&#x27; : &#x27;相对基线残差（%）&#x27;);
+
+        const line = d3.line()
+          .x((d) =&gt; x(d.t))
+          .y((d) =&gt; y(d.value));
+        const series = current.actual.map((_, t) =&gt; ({
+          t,
+          actual: current.actual[t],
+          baseline: current.baseline[t],
+          recon: current.recon[t],
+          residual: current.residual[t],
+          residualHat: current.residualHat[t]
+        }));
+
+        const setPath = (className, data, visible, stroke, widthValue, dash) =&gt; {
+          const path = plot.selectAll(`path.${className}`).data(visible ? [data] : []);
+          path.exit().remove();
+          const entered = path.enter().append(&#x27;path&#x27;)
+            .attr(&#x27;class&#x27;, className)
+            .attr(&#x27;fill&#x27;, &#x27;none&#x27;)
+            .attr(&#x27;stroke&#x27;, stroke)
+            .attr(&#x27;stroke-width&#x27;, widthValue)
+            .attr(&#x27;stroke-linejoin&#x27;, &#x27;round&#x27;)
+            .attr(&#x27;stroke-linecap&#x27;, &#x27;round&#x27;)
+            .attr(&#x27;stroke-dasharray&#x27;, dash || null);
+          transitionFor(entered.merge(path), animate).attr(&#x27;d&#x27;, line);
+        };
+
+        if (type === &#x27;price&#x27;) {
+          setPath(&#x27;actual-line&#x27;, series.map((d) =&gt; ({ t: d.t, value: d.actual })), layerState.actual, &#x27;var(--viz-series-1)&#x27;, 2.2, null);
+          setPath(&#x27;baseline-line&#x27;, series.map((d) =&gt; ({ t: d.t, value: d.baseline })), layerState.baseline, &#x27;var(--viz-series-4)&#x27;, 1.5, &#x27;6 4&#x27;);
+          setPath(&#x27;recon-line&#x27;, series.map((d) =&gt; ({ t: d.t, value: d.recon })), layerState.recon, &#x27;var(--viz-series-2)&#x27;, 2.2, &#x27;10 3&#x27;);
+
+          const anchorData = layerState.anchors ? current.anchors.map((d, index) =&gt; ({
+            t: d.t,
+            residual: d.value,
+            baseline: current.baseline[d.t],
+            actual: current.actual[d.t],
+            index
+          })) : [];
+          plot.selectAll(&#x27;line.anchor-stem&#x27;).data(anchorData, (d) =&gt; d.t).join(
+            (enter) =&gt; enter.append(&#x27;line&#x27;).attr(&#x27;class&#x27;, &#x27;anchor-stem&#x27;)
+              .attr(&#x27;x1&#x27;, (d) =&gt; x(d.t)).attr(&#x27;x2&#x27;, (d) =&gt; x(d.t))
+              .attr(&#x27;y1&#x27;, (d) =&gt; y(d.baseline)).attr(&#x27;y2&#x27;, (d) =&gt; y(d.baseline))
+              .attr(&#x27;stroke&#x27;, &#x27;var(--viz-series-3)&#x27;).attr(&#x27;stroke-width&#x27;, 1.2),
+            (update) =&gt; update,
+            (exit) =&gt; exit.remove()
+          ).call((selection) =&gt; transitionFor(selection, animate)
+            .attr(&#x27;x1&#x27;, (d) =&gt; x(d.t)).attr(&#x27;x2&#x27;, (d) =&gt; x(d.t))
+            .attr(&#x27;y1&#x27;, (d) =&gt; y(d.baseline)).attr(&#x27;y2&#x27;, (d) =&gt; y(d.actual)));
+          plot.selectAll(&#x27;circle.anchor-dot&#x27;).data(anchorData, (d) =&gt; d.t).join(
+            (enter) =&gt; enter.append(&#x27;circle&#x27;).attr(&#x27;class&#x27;, &#x27;anchor-dot&#x27;)
+              .attr(&#x27;r&#x27;, 4).attr(&#x27;fill&#x27;, &#x27;var(--viz-series-3)&#x27;),
+            (update) =&gt; update,
+            (exit) =&gt; exit.remove()
+          ).call((selection) =&gt; transitionFor(selection, animate)
+            .attr(&#x27;cx&#x27;, (d) =&gt; x(d.t)).attr(&#x27;cy&#x27;, (d) =&gt; y(d.actual)));
+
+          const annotationData = width &gt;= 560 &amp;&amp; layerState.anchors
+            ? [anchorData[Math.floor(anchorData.length / 2)]]
+            : [];
+          plot.selectAll(&#x27;text.anchor-label&#x27;).data(annotationData).join(&#x27;text&#x27;)
+            .attr(&#x27;class&#x27;, &#x27;anchor-label&#x27;)
+            .attr(&#x27;x&#x27;, (d) =&gt; Math.min(innerWidth - 8, x(d.t) + 8))
+            .attr(&#x27;y&#x27;, (d) =&gt; y(d.actual) - 8)
+            .attr(&#x27;text-anchor&#x27;, (d) =&gt; x(d.t) &gt; innerWidth * 0.75 ? &#x27;end&#x27; : &#x27;start&#x27;)
+            .text((d) =&gt; `保存残差 e${d.index}`);
+          plot.selectAll(&#x27;text.endpoint-label&#x27;).data(width &gt;= 560 &amp;&amp; layerState.recon ? [series[59]] : []).join(&#x27;text&#x27;)
+            .attr(&#x27;class&#x27;, &#x27;endpoint-label&#x27;)
+            .attr(&#x27;x&#x27;, innerWidth - 6)
+            .attr(&#x27;y&#x27;, (d) =&gt; Math.max(14, y(d.actual) - 9))
+            .attr(&#x27;text-anchor&#x27;, &#x27;end&#x27;)
+            .text(&#x27;终点严格匹配&#x27;);
+        } else {
+          setPath(&#x27;residual-line&#x27;, series.map((d) =&gt; ({ t: d.t, value: d.residual })), layerState.anchors, &#x27;var(--viz-series-1)&#x27;, 1.8, null);
+          setPath(&#x27;residual-hat-line&#x27;, series.map((d) =&gt; ({ t: d.t, value: d.residualHat })), layerState.recon, &#x27;var(--viz-series-2)&#x27;, 2.2, &#x27;10 3&#x27;);
+          plot.selectAll(&#x27;line.zero-line&#x27;).data([null]).join(&#x27;line&#x27;)
+            .attr(&#x27;class&#x27;, &#x27;zero-line&#x27;)
+            .attr(&#x27;x1&#x27;, 0).attr(&#x27;x2&#x27;, innerWidth)
+            .attr(&#x27;y1&#x27;, y(0)).attr(&#x27;y2&#x27;, y(0))
+            .attr(&#x27;stroke&#x27;, &#x27;var(--border)&#x27;).attr(&#x27;stroke-width&#x27;, 1);
+          const residualAnchors = layerState.anchors ? current.anchors : [];
+          plot.selectAll(&#x27;circle.residual-anchor&#x27;).data(residualAnchors, (d) =&gt; d.t).join(
+            (enter) =&gt; enter.append(&#x27;circle&#x27;).attr(&#x27;class&#x27;, &#x27;residual-anchor&#x27;)
+              .attr(&#x27;r&#x27;, 4).attr(&#x27;fill&#x27;, &#x27;var(--viz-series-3)&#x27;),
+            (update) =&gt; update,
+            (exit) =&gt; exit.remove()
+          ).call((selection) =&gt; transitionFor(selection, animate)
+            .attr(&#x27;cx&#x27;, (d) =&gt; x(d.t)).attr(&#x27;cy&#x27;, (d) =&gt; y(d.value)));
+          plot.selectAll(&#x27;text.residual-note&#x27;).data(width &gt;= 560 &amp;&amp; layerState.anchors ? [null] : []).join(&#x27;text&#x27;)
+            .attr(&#x27;class&#x27;, &#x27;residual-note&#x27;)
+            .attr(&#x27;x&#x27;, 8).attr(&#x27;y&#x27;, 16)
+            .text(`仅保存 ${current.storedValues} 个内部残差；每日残差不持久化`);
+        }
+
+        const guide = plot.selectAll(&#x27;line[data-chart-hover-guide]&#x27;).data([null]).join(&#x27;line&#x27;)
+          .attr(&#x27;data-chart-hover-guide&#x27;, &#x27;&#x27;)
+          .attr(&#x27;y1&#x27;, 0).attr(&#x27;y2&#x27;, innerHeight)
+          .attr(&#x27;stroke&#x27;, &#x27;var(--foreground)&#x27;).attr(&#x27;stroke-opacity&#x27;, 0.45)
+          .attr(&#x27;stroke-width&#x27;, 1).style(&#x27;display&#x27;, &#x27;none&#x27;);
+        const markerLayer = plot.selectAll(&#x27;g.hover-markers&#x27;).data([null]).join(&#x27;g&#x27;).attr(&#x27;class&#x27;, &#x27;hover-markers&#x27;);
+        const overlay = plot.selectAll(&#x27;rect[data-chart-hit]&#x27;).data([null]).join(&#x27;rect&#x27;)
+          .attr(&#x27;data-chart-hit&#x27;, &#x27;&#x27;)
+          .attr(&#x27;data-chart-hover-overlay&#x27;, &#x27;cross-series&#x27;)
+          .attr(&#x27;x&#x27;, 0).attr(&#x27;y&#x27;, 0)
+          .attr(&#x27;width&#x27;, innerWidth).attr(&#x27;height&#x27;, innerHeight)
+          .attr(&#x27;fill&#x27;, &#x27;transparent&#x27;)
+          .style(&#x27;cursor&#x27;, &#x27;crosshair&#x27;);
+
+        overlay.on(&#x27;pointermove&#x27;, (event) =&gt; {
+          const [pointerX] = d3.pointer(event, overlay.node());
+          const day = Math.max(0, Math.min(59, x.invert(pointerX)));
+          guide.attr(&#x27;x1&#x27;, x(day)).attr(&#x27;x2&#x27;, x(day)).style(&#x27;display&#x27;, null);
+          let markerRows;
+          let tooltipRows = [[&#x27;窗口位置&#x27;, `Day ${day.toFixed(1)}`]];
+          if (type === &#x27;price&#x27;) {
+            markerRows = [
+              layerState.actual &amp;&amp; { label: &#x27;实际路径&#x27;, value: interpolateSamples(current.actual, day), color: &#x27;var(--viz-series-1)&#x27; },
+              layerState.baseline &amp;&amp; { label: &#x27;起终点基线&#x27;, value: interpolateSamples(current.baseline, day), color: &#x27;var(--viz-series-4)&#x27; },
+              layerState.recon &amp;&amp; { label: &#x27;重建路径&#x27;, value: interpolateSamples(current.recon, day), color: &#x27;var(--viz-series-2)&#x27; }
+            ].filter(Boolean);
+          } else {
+            markerRows = [
+              layerState.anchors &amp;&amp; { label: &#x27;完整残差&#x27;, value: interpolateSamples(current.residual, day), color: &#x27;var(--viz-series-1)&#x27; },
+              layerState.recon &amp;&amp; { label: &#x27;插值残差&#x27;, value: interpolateSamples(current.residualHat, day), color: &#x27;var(--viz-series-2)&#x27; }
+            ].filter(Boolean);
+          }
+          tooltipRows = tooltipRows.concat(markerRows.map((row) =&gt; [row.label, `${(100 * row.value).toFixed(2)}%`]));
+          markerLayer.selectAll(&#x27;circle[data-chart-hover-marker]&#x27;).data(markerRows, (d) =&gt; d.label).join(&#x27;circle&#x27;)
+            .attr(&#x27;data-chart-hover-marker&#x27;, &#x27;&#x27;)
+            .attr(&#x27;cx&#x27;, x(day)).attr(&#x27;cy&#x27;, (d) =&gt; y(d.value))
+            .attr(&#x27;r&#x27;, 4).attr(&#x27;fill&#x27;, (d) =&gt; d.color)
+            .attr(&#x27;stroke&#x27;, &#x27;var(--background)&#x27;).attr(&#x27;stroke-width&#x27;, 1.5);
+          showTooltip(event, tooltipRows);
+        }).on(&#x27;pointerleave&#x27;, () =&gt; {
+          guide.style(&#x27;display&#x27;, &#x27;none&#x27;);
+          markerLayer.selectAll(&#x27;*&#x27;).remove();
+          hideTooltip();
+        });
+      };
+
+      const updateText = () =&gt; {
+        meta.innerHTML = [
+          `&lt;span&gt;&lt;strong&gt;60&lt;/strong&gt; observations → &lt;strong&gt;${current.storedValues}&lt;/strong&gt; stored residuals&lt;/span&gt;`,
+          `&lt;span&gt;价格 RMSE &lt;strong&gt;${current.rmse.toFixed(2)}%&lt;/strong&gt;&lt;/span&gt;`,
+          `&lt;span&gt;最大价格误差 &lt;strong&gt;${current.maxError.toFixed(2)}%&lt;/strong&gt;&lt;/span&gt;`,
+          `&lt;span&gt;标准化路径 RMSE &lt;strong&gt;${(100 * current.nrmse).toFixed(1)}%&lt;/strong&gt;&lt;/span&gt;`
+        ].join(&#x27;&#x27;);
+        collisionNote.textContent = current.scenario.collision;
+        const metric = current.metrics;
+        fingerprint.textContent = `G/T 指标指纹：G01 ${(100 * metric.G01).toFixed(2)}% · G02 ${metric.G02.toFixed(4)} · G03 ${metric.G03.toFixed(2)}% · G04 ${metric.G04.toFixed(3)} · G05 ${metric.G05.toFixed(3)} · G07 ${metric.G07 === null ? &#x27;NULL&#x27; : `${metric.G07.toFixed(3)}σ`} · T03 ${metric.T03.toFixed(3)} · T04 ${metric.T04.toFixed(3)}`;
+        summary.textContent = `${current.scenario.label}，固定网格 K 等于 ${current.K}，保存 ${current.storedValues} 个内部残差，价格均方根误差 ${current.rmse.toFixed(2)}%，最大价格误差 ${current.maxError.toFixed(2)}%。`;
+      };
+
+      const render = (animate = true) =&gt; {
+        current = buildModel();
+        updateText();
+        drawChart(&#x27;#fg-price-chart&#x27;, &#x27;price&#x27;, animate);
+        drawChart(&#x27;#fg-residual-chart&#x27;, &#x27;residual&#x27;, animate);
+      };
+
+      scenarioSelect.addEventListener(&#x27;change&#x27;, () =&gt; render(true));
+      kSelect.addEventListener(&#x27;change&#x27;, () =&gt; render(true));
+      tailToggle.addEventListener(&#x27;change&#x27;, () =&gt; render(true));
+      root.querySelectorAll(&#x27;[data-layer]&#x27;).forEach((button) =&gt; {
+        button.addEventListener(&#x27;click&#x27;, () =&gt; {
+          const layer = button.dataset.layer;
+          layerState[layer] = !layerState[layer];
+          button.setAttribute(&#x27;aria-pressed&#x27;, String(layerState[layer]));
+          render(false);
+        });
+      });
+
+      const resizeObserver = new ResizeObserver(() =&gt; {
+        if (current) render(false);
+      });
+      resizeObserver.observe(root.querySelector(&#x27;#fg-price-chart&#x27;));
+      resizeObserver.observe(root.querySelector(&#x27;#fg-residual-chart&#x27;));
+      render(false);
+    })();
+  &lt;/script&gt;
+&lt;/div&gt;
+
+&lt;script src=&quot;https://unpkg.com/@floating-ui/core@1.7.3/dist/floating-ui.core.umd.min.js&quot;&gt;&lt;/script&gt;
+&lt;script src=&quot;https://unpkg.com/@floating-ui/dom@1.7.4/dist/floating-ui.dom.umd.min.js&quot;&gt;&lt;/script&gt;
+&lt;script&gt;
+(() =&gt; {
+  if (window.FloatingUIDOM == null) {
+    return;
+  }
+  const { autoUpdate, computePosition, flip, offset, shift, size } =
+    window.FloatingUIDOM;
+  const tooltipPlacements = new Set([&quot;top&quot;, &quot;right&quot;, &quot;bottom&quot;, &quot;left&quot;]);
+  const tooltipId = `codex-visualization-tooltip-${
+    window.crypto?.randomUUID?.() ?? Date.now().toString(36)
+  }`;
+  const tooltipGap = 5;
+  const hoverDelay = 700;
+  const skipDelay = 300;
+  let activeTrigger = null;
+  let pendingTrigger = null;
+  let tooltip = null;
+  let openTimeout = null;
+  let autoUpdateCleanup = null;
+  let positionRequest = 0;
+  let skipDelayUntil = 0;
+
+  const getTrigger = (target) =&gt;
+    target?.nodeType === Node.ELEMENT_NODE
+      ? target.closest(&quot;[data-tooltip]&quot;)
+      : null;
+  const containsTarget = (trigger, target) =&gt;
+    target?.nodeType != null &amp;&amp; trigger.contains(target);
+  const getContent = (trigger) =&gt;
+    trigger.getAttribute(&quot;data-tooltip&quot;)?.trim() ?? &quot;&quot;;
+  const getPlacement = (trigger) =&gt; {
+    const placement = trigger.getAttribute(&quot;data-tooltip-placement&quot;);
+    return tooltipPlacements.has(placement) ? placement : &quot;top&quot;;
+  };
+  const getTooltip = () =&gt; {
+    if (tooltip == null) {
+      tooltip = document.createElement(&quot;div&quot;);
+      tooltip.id = tooltipId;
+      tooltip.className = &quot;tooltip&quot;;
+      tooltip.setAttribute(&quot;role&quot;, &quot;tooltip&quot;);
+    }
+    return tooltip;
+  };
+  const setDescribedBy = (trigger, described) =&gt; {
+    const ids = new Set(
+      (trigger.getAttribute(&quot;aria-describedby&quot;) ?? &quot;&quot;)
+        .split(/\s+/)
+        .filter(Boolean),
+    );
+    if (described) {
+      ids.add(tooltipId);
+    } else {
+      ids.delete(tooltipId);
+    }
+    if (ids.size === 0) {
+      trigger.removeAttribute(&quot;aria-describedby&quot;);
+    } else {
+      trigger.setAttribute(&quot;aria-describedby&quot;, [...ids].join(&quot; &quot;));
+    }
+  };
+  const clearOpenTimeout = () =&gt; {
+    if (openTimeout != null) {
+      window.clearTimeout(openTimeout);
+      openTimeout = null;
+    }
+    pendingTrigger = null;
+  };
+  const closeTooltip = (activateSkipDelay = true) =&gt; {
+    clearOpenTimeout();
+    positionRequest += 1;
+    autoUpdateCleanup?.();
+    autoUpdateCleanup = null;
+    if (activeTrigger == null) {
+      return;
+    }
+    setDescribedBy(activeTrigger, false);
+    activeTrigger = null;
+    tooltip?.remove();
+    if (activateSkipDelay) {
+      skipDelayUntil = Date.now() + skipDelay;
+    }
+  };
+  const updatePosition = (trigger, floating) =&gt; {
+    const request = ++positionRequest;
+    void computePosition(trigger, floating, {
+      middleware: [
+        offset(tooltipGap),
+        flip({ padding: tooltipGap }),
+        shift({ padding: tooltipGap }),
+        size({
+          padding: tooltipGap,
+          apply({ availableHeight, availableWidth, elements }) {
+            elements.floating.style.setProperty(
+              &quot;--tooltip-available-width&quot;,
+              `${Math.max(0, availableWidth)}px`,
+            );
+            elements.floating.style.setProperty(
+              &quot;--tooltip-available-height&quot;,
+              `${Math.max(0, availableHeight)}px`,
+            );
+          },
+        }),
+      ],
+      placement: getPlacement(trigger),
+      strategy: &quot;fixed&quot;,
+    })
+      .then(({ x, y }) =&gt; {
+        if (activeTrigger !== trigger || request !== positionRequest) {
+          return;
+        }
+        const scale = window.devicePixelRatio || 1;
+        floating.style.transform = `translate(${Math.round(x * scale) / scale}px, ${Math.round(y * scale) / scale}px)`;
+        floating.style.visibility = &quot;visible&quot;;
+      })
+      .catch(() =&gt; {
+        if (activeTrigger === trigger &amp;&amp; request === positionRequest) {
+          closeTooltip(false);
+        }
+      });
+  };
+  const openTooltip = (trigger) =&gt; {
+    const content = getContent(trigger);
+    if (!trigger.isConnected || content.length === 0) {
+      return;
+    }
+    clearOpenTimeout();
+    if (activeTrigger === trigger) {
+      return;
+    }
+    closeTooltip();
+    const floating = getTooltip();
+    floating.textContent = content;
+    floating.style.visibility = &quot;hidden&quot;;
+    floating.style.transform = &quot;translate(0, 0)&quot;;
+    document.body.appendChild(floating);
+    activeTrigger = trigger;
+    setDescribedBy(trigger, true);
+    autoUpdateCleanup = autoUpdate(trigger, floating, () =&gt; {
+      updatePosition(trigger, floating);
+    });
+  };
+  const requestOpen = (trigger, immediate = false) =&gt; {
+    if (
+      getContent(trigger).length === 0 ||
+      activeTrigger === trigger ||
+      pendingTrigger === trigger
+    ) {
+      return;
+    }
+    clearOpenTimeout();
+    pendingTrigger = trigger;
+    const delay =
+      immediate || activeTrigger != null || Date.now() &lt; skipDelayUntil
+        ? 0
+        : hoverDelay;
+    if (delay === 0) {
+      openTooltip(trigger);
+      return;
+    }
+    openTimeout = window.setTimeout(() =&gt; {
+      openTimeout = null;
+      pendingTrigger = null;
+      openTooltip(trigger);
+    }, delay);
+  };
+  const handlePointerOpen = (event) =&gt; {
+    if (event.pointerType === &quot;touch&quot;) {
+      return;
+    }
+    const trigger = getTrigger(event.target);
+    if (trigger == null || containsTarget(trigger, event.relatedTarget)) {
+      return;
+    }
+    requestOpen(trigger);
+  };
+  const handleLeave = (event) =&gt; {
+    const trigger = getTrigger(event.target);
+    if (trigger == null || containsTarget(trigger, event.relatedTarget)) {
+      return;
+    }
+    if (activeTrigger === trigger || pendingTrigger === trigger) {
+      closeTooltip();
+    }
+  };
+  const handleFocusIn = (event) =&gt; {
+    const trigger = getTrigger(event.target);
+    if (trigger?.matches(&quot;:focus-visible&quot;)) {
+      requestOpen(trigger, true);
+    }
+  };
+  const handleKeyDown = (event) =&gt; {
+    if (event.key === &quot;Escape&quot;) {
+      closeTooltip();
+    }
+  };
+  const handleContextMenu = (event) =&gt; {
+    const trigger = getTrigger(event.target);
+    if (activeTrigger === trigger || pendingTrigger === trigger) {
+      closeTooltip();
+    }
+  };
+  const destroy = () =&gt; {
+    closeTooltip(false);
+    document.removeEventListener(&quot;pointerover&quot;, handlePointerOpen);
+    document.removeEventListener(&quot;pointerout&quot;, handleLeave);
+    document.removeEventListener(&quot;focusin&quot;, handleFocusIn);
+    document.removeEventListener(&quot;focusout&quot;, handleLeave);
+    document.removeEventListener(&quot;keydown&quot;, handleKeyDown);
+    document.removeEventListener(&quot;contextmenu&quot;, handleContextMenu);
+    tooltip = null;
+  };
+
+  document.addEventListener(&quot;pointerover&quot;, handlePointerOpen);
+  document.addEventListener(&quot;pointerout&quot;, handleLeave);
+  document.addEventListener(&quot;focusin&quot;, handleFocusIn);
+  document.addEventListener(&quot;focusout&quot;, handleLeave);
+  document.addEventListener(&quot;keydown&quot;, handleKeyDown);
+  document.addEventListener(&quot;contextmenu&quot;, handleContextMenu);
+  window.addEventListener(&quot;pagehide&quot;, destroy, { once: true });
+})();
+&lt;/script&gt;
+&lt;script id=&quot;codex-visualization-lucide&quot; async src=&quot;https://unpkg.com/lucide@1.17.0/dist/umd/lucide.js&quot;&gt;&lt;/script&gt;
+&lt;script&gt;
+(() =&gt; {
+  const initialize = () =&gt; {
+    globalThis.lucide?.createIcons({ attrs: { width: 16, height: 16 } });
+  };
+  if (globalThis.lucide != null) {
+    initialize();
+    return;
+  }
+  document
+    .getElementById(&quot;codex-visualization-lucide&quot;)
+    ?.addEventListener(&quot;load&quot;, initialize, { once: true });
+})();
+&lt;/script&gt;
+
+&lt;/body&gt;
+&lt;/html&gt;
+"></iframe>
+</body>
+</html>

@@ -46,6 +46,12 @@ def test_anchor_offsets_generate_explicit_local_comparison_pairs() -> None:
     assert calculation_offsets == [0, 2, 10, 12, 20, 22]
 
 
+def test_production_parameters_default_to_five_segments(monkeypatch) -> None:
+    monkeypatch.setattr(settings, "indicators", {"adaptive_trend": {}})
+
+    assert validation._production_parameters() == validation.ParameterSet(3.0, 5, 5)
+
+
 def test_default_output_dir_uses_run_timestamp() -> None:
     started_at = datetime(
         2026,

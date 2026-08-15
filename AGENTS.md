@@ -180,7 +180,7 @@ CREATE INDEX IF NOT EXISTS trend_daily_symbol_date_idx
 
 ### 自适应趋势分段实验表
 
-`trend_segmentation_daily` 保存 40/60 bar 实验窗口的分段数、RSS、BIC 与模型参数；
+`trend_segmentation_daily` 当前保存 60 bar 生产窗口的分段数、RSS、BIC 与模型参数；
 `trend_segment_daily` 保存每一段的日期边界、bar 索引、log slope、R²、return、波动率、
 波动率调整趋势、路径效率，以及最大单日 log return、发生日期/bar 索引和绝对路径占比。
 算法对合法断点组合执行全局连续分段最小二乘，拟合路径在断点处连续但不强制经过实际
@@ -195,7 +195,7 @@ log return。BIC 复杂度惩罚乘数由 `bic_penalty_multiplier` 配置，默�
 
 ### trend_pattern_daily
 
-阶段 C 基于已持久化的自适应分段，以 `trend_pattern_v3` 口径对 40/60 bar 路径做分层描述：
+阶段 C 基于已持久化的自适应分段，以 `trend_pattern_v3` 口径对 60 bar 路径做分层描述：
 
 - `regime`：`trending`、`ranging`、`transitioning` 或 `irregular`。
 - `directional_bias`：按窗口净拟合收益与净/总运动比例得到 `up`、`down` 或 `neutral`。
@@ -214,7 +214,7 @@ log return。BIC 复杂度惩罚乘数由 `bic_penalty_multiplier` 配置，默�
 ### trend_pattern_v4_daily
 
 v4 使用独立表，不覆盖 `trend_pattern_daily`。`lookback_bars` 表示 close observations
-数量，40/60 bars 分别对应 39/59 个 daily returns。表中保存 1～4 effective legs 的
+数量，当前生产窗口 60 bars 对应 59 个 daily returns。表中保存 1～4 effective legs 的
 `start_direction`、`structure_index`、`structure_code`，以及已接受的 G01～G07、T03、T04
 连续数值指标；无 effective leg 时仍写入 raw-close 指标，结构字段和
 `terminal_leg_start_position` 为 `NULL`。D01～D03 为可推导量，不重复持久化。
@@ -416,3 +416,18 @@ cron 建议顺序：
 - 引用前文已经定义过的字母或代数符号时，应再次说明当前使用的定义。若符号含义、统计
   口径或分母发生变化，必须明确指出并优先改用新的符号，禁止无说明地复用原符号。
 - 涉及数据库输出、下游查询接口或 CLI 变化时，必须单独说明 `investment_dashboard` 是否可能需要同步修改。
+
+### 方案命名与版本管理
+
+当回复中给出可供后续修改或执行的正式方案、设计方案、技术方案或实施计划时，必须明确列出：
+
+- **方案名称**：便于人阅读和讨论的名称。
+- **方案编号**：稳定、简短、可引用的标识；同一方案后续修订继续使用同一编号。
+- **版本号**：使用 `vMAJOR.MINOR.PATCH` 语义化格式；首次正式方案默认从 `v1.0.0` 开始。
+- **状态**：例如“提议”“已确认”“执行中”“已实施”或“已废弃”。
+
+版本递增规则：不改变目标和结构的文字或小参数修订增加 `PATCH`；向后兼容的功能、范围或重要
+设计扩展增加 `MINOR`；不兼容变更、核心口径变化或整体替代原方案增加 `MAJOR`。不得在发生实质
+变化后继续沿用原版本号。每次重述、比较或修改方案时都应再次给出上述四项信息，不依赖读者回看
+前文。若用户随后要求按方案实施，最终交付必须注明实际执行的方案编号和版本号。普通问答、故障
+诊断、状态汇报或不构成正式方案的简短建议不强制使用该格式。

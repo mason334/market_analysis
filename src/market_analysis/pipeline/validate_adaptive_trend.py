@@ -71,7 +71,7 @@ def _production_parameters() -> ParameterSet:
     return ParameterSet(
         float(params.get("bic_penalty_multiplier", 3.0)),
         int(params.get("min_segment_bars", 5)),
-        int(params.get("max_segments", 4)),
+        int(params.get("max_segments", 5)),
     )
 
 
@@ -968,7 +968,7 @@ def run_adaptive_trend_validation(
     lookbacks = [
         int(value)
         for value in settings.indicators.get("adaptive_trend", {}).get(
-            "lookbacks", [40, 60]
+            "lookbacks", [60]
         )
     ]
     base_offsets, anchor_pairs, calculation_offsets = _configured_anchor_pairs(config)

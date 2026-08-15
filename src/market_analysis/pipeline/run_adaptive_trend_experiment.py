@@ -29,7 +29,7 @@ def _analysis_symbols() -> list[str]:
 def run_adaptive_trend_experiment_pipeline(target_date: date | None = None) -> int:
     """Run adaptive segmentation separately from the production fixed-window pipeline."""
     params: dict[str, Any] = dict(settings.indicators.get("adaptive_trend", {}))
-    lookbacks = [int(value) for value in params.get("lookbacks", [40, 60])]
+    lookbacks = [int(value) for value in params.get("lookbacks", [60])]
     if not lookbacks:
         raise ValueError("adaptive_trend.lookbacks must contain at least one window.")
     source = str(settings.pipeline.get("source", "tiingo"))

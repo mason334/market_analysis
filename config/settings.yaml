@@ -23,9 +23,9 @@ indicators:
       - {label: 60d, far_bars: 60, near_bars: 0}
 
   adaptive_trend:
-    lookbacks: [40, 60]
+    lookbacks: [60]
     min_segment_bars: 5
-    max_segments_cap: 10
+    max_segments: 5
     bic_penalty_multiplier: 3.0
     search:
       exact_candidate_budget: 100000
