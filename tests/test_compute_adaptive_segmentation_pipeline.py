@@ -3,7 +3,7 @@ from __future__ import annotations
 import numpy as np
 import pandas as pd
 
-from market_analysis.pipeline import compute_adaptive_trend
+from market_analysis.pipeline import compute_adaptive_segmentation
 
 
 def test_single_symbol_pipeline_returns_dashboard_json_payload(monkeypatch) -> None:
@@ -18,9 +18,13 @@ def test_single_symbol_pipeline_returns_dashboard_json_payload(monkeypatch) -> N
         },
         index=index,
     )
-    monkeypatch.setattr(compute_adaptive_trend, "fetch_ohlcv", lambda *_args, **_kwargs: frame)
+    monkeypatch.setattr(
+        compute_adaptive_segmentation,
+        "fetch_ohlcv",
+        lambda *_args, **_kwargs: frame,
+    )
 
-    result = compute_adaptive_trend.compute_adaptive_trend_for_symbol(
+    result = compute_adaptive_segmentation.compute_adaptive_segmentation_for_symbol(
         "test",
         lookback_bars=40,
         min_segment_bars=5,
@@ -29,7 +33,7 @@ def test_single_symbol_pipeline_returns_dashboard_json_payload(monkeypatch) -> N
     )
 
     assert result["summary"]["symbol"] == "TEST"
-    assert result["summary"]["calculation_version"] == "adaptive_trend_v3"
+    assert result["summary"]["calculation_version"] == "adaptive_segmentation_v3"
     assert len(result["segments"]) == 1
     assert len(result["fitted_points"]) == 40
     assert result["fitted_points"][-1]["date"] == index[-1].date()

@@ -10,8 +10,10 @@ Daily symbol-level analysis is now split by responsibility:
 
 - `support_resistance_daily` stores SR snapshots.
 - `trend_daily` stores one row per symbol/date/trend window.
-- `trend_segmentation_daily` and `trend_segment_daily` store the separate adaptive
-  segmentation experiment summary and segment details.
+- `trend_segmentation_daily` and `trend_segment_daily` store canonical adaptive
+  segmentation summaries and segment details.
+- `pivot_segmentation_daily` and `pivot_segment_daily` store close-pivot refined
+  summaries, segments, and endpoint metadata.
 - `trend_pattern_daily` stores layered regime/bias/path/terminal-state descriptors and one
   derived long-window pattern per symbol/date/lookback.
 - `trend_pattern_v4_daily` independently stores v4 effective-leg structure plus accepted
@@ -120,7 +122,9 @@ PostgreSQL (localhost:5432)
     ├── support_resistance_daily    # 支撑/阻力快照（每 symbol 每日一行）
     ├── trend_daily                 # 固定窗口趋势快照
     ├── trend_segmentation_daily    # 自适应分段模型选择摘要
-    ├── trend_segment_daily         # 自适应趋势分段明细
+    ├── trend_segment_daily         # 自适应初分段明细
+    ├── pivot_segmentation_daily    # Pivot 精炼分段摘要
+    ├── pivot_segment_daily         # Pivot 精炼分段及终点节点
     ├── trend_pattern_daily         # 长窗口趋势形态分类
     ├── trend_pattern_v4_daily      # v4 结构与 close-path 指标
     └── sector_heat_daily           # 板块热度快照（每 universe_ticker 每日一行）
@@ -182,11 +186,11 @@ CREATE TABLE IF NOT EXISTS trend_daily (
 log return、日度实现波动率、波动率调整趋势、路径效率和斜率稳定性。数据库使用小数
 log 口径，不提前乘 100 或舍入；百分比展示由下游转换。
 
-### 自适应趋势分段实验
+### 自适应初分段与 Pivot 精炼分段
 
-阶段 B 当前使用单一 60 bar 长窗口，在 log price 上对所有合法断点组合执行全局连续分段
+初分段当前使用单一 250 bar 长窗口，在 log price 上对合法断点组合执行全局连续分段
 最小二乘。模型使用 linear-spline hinge basis，允许断点前后斜率变化，但要求拟合路径在
-断点处连续；拟合线不强制经过实际端点。`adaptive_trend_v3` 在固定分段数的合法组合不超过
+断点处连续；拟合线不强制经过实际端点。`adaptive_segmentation_v3` 在固定分段数的合法组合不超过
 `exact_candidate_budget` 时执行分批精确穷举，超过预算时使用确定性 beam expansion、单断点
 全域优化和相邻双断点局部优化，再使用 BIC 选择分段数。每一段不少于
 `min_segment_bars`，因此拐点不需要落在固定窗口边界上。
@@ -199,10 +203,16 @@ log 口径，不提前乘 100 或舍入；百分比展示由下游转换。
 - `trend_segmentation_daily`：每个 `symbol/date/lookback_bars` 的模型选择摘要。
 - `trend_segment_daily`：每个自适应段的日期边界和段内趋势指标。
 - 方法：`continuous_piecewise_log_linear_deterministic_hybrid_bic`。
-- 版本：`adaptive_trend_v3`。
-- 60 bars 固定输出最多允许 5 段并保持精确搜索；交互窗口最多 250 bars、10 段。
+- 版本：`adaptive_segmentation_v3`。
+- 250 bars 固定输出的最大分段数上限为 10；候选空间超过预算时明确标记为近似搜索。
 - summary 显式保存 exact/approximate、全局最优保证、候选评估数、收敛状态和搜索审计信息。
-- 独立实验命令不会修改 `trend_daily`，也不会由 `run-indicators` 自动触发。
+- 独立分段命令不会修改 `trend_daily`，也不会由 `run-indicators` 自动触发。
+
+`pivot_refined_segmentation_v2` 将初始段分类为 `up/down/flat`、合并相邻同类段，再在每个
+方向转换点左右各 5 bars 内只使用 close 搜索 `high/low` pivot。最终以固定 pivot 横坐标重新
+执行全局连续 log-linear OLS；结果写入 `pivot_segmentation_daily` 与
+`pivot_segment_daily`。内部 pivot 元数据归属于左侧 segment 的终点，末段终点类型为
+`window_end`。
 
 ### 长窗口趋势形态
 
@@ -434,19 +444,22 @@ market-analysis run-indicators
 # 板块热度（所有 universe_ticker -> sector_heat_daily）
 market-analysis run-sector-heat
 
-# 自适应趋势分段实验（独立于固定窗口生产流程）
-market-analysis run-trend-segmentation-experiment
+# 自适应初分段（独立于固定窗口生产流程）
+market-analysis run-adaptive-segmentation
+
+# 使用 close pivot 精炼已持久化的初分段
+market-analysis run-pivot-segmentation
 
 # 单标的只读计算；输出 dashboard 可解析的 JSON，不写生产表
-market-analysis compute-adaptive-trend `
+market-analysis compute-adaptive-segmentation `
   --symbol AAPL --lookback 250 --min-segment-bars 5 `
   --max-segments 10 --bic-penalty-multiplier 3.0
 
 # 自动扫描参数并生成交互式验证报告（只读 market_data，不写指标表）
-market-analysis validate-trend-segmentation --date 2026-07-17
+market-analysis validate-adaptive-segmentation --date 2026-07-17
 
 # 指定样本；默认执行分阶段筛选，--full-grid 可运行完整笛卡尔积
-market-analysis validate-trend-segmentation `
+market-analysis validate-adaptive-segmentation `
   --symbols SPY,QQQ,IWM,TLT,GLD,AAPL,NVDA,TSLA `
   --date 2026-07-17
 
@@ -458,12 +471,12 @@ market-analysis run-trend-pattern-v4-analysis
 ```
 
 验证参数网格、历史截面偏移和报告中展示的候选参数数量配置在
-`validation.adaptive_trend`。默认流程先扫描 BIC 惩罚，再扫描最短分段长度，最后对候选
+`validation.adaptive_segmentation`。默认流程先扫描 BIC 惩罚，再扫描最短分段长度，最后对候选
 `max_segments` 组合执行多历史截面稳定性复验。结果写入
-`artifacts/adaptive_trend_validation/<date>/run_<timestamp>/`：每次运行创建独立时间戳目录，
+`artifacts/adaptive_segmentation_validation/<date>/run_<timestamp>/`：每次运行创建独立时间戳目录，
 不会覆盖同一天的旧报告；目录中的 `index.html` 包含交互式价格/拟合/残差图，
 并同时输出 `summary.csv`、`segments.csv` 和 `parameter_comparison.csv`。拟合质量与复杂度分数用于排序
-复核优先级，不会自动修改生产 `adaptive_trend` 参数。
+复核优先级，不会自动修改生产 `adaptive_segmentation` 参数。
 
 命令行按参数组显示 `bic_scan`、`minimum_scan`、`stability_review` 或 `full_grid` 进度条。
 `anchor_offsets` 定义多个历史基准截面，每个基准只与

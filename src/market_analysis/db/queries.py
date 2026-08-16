@@ -230,6 +230,11 @@ _FETCH_LATEST_TREND_SEGMENTATION_DATE = """
 SELECT MAX(date) FROM trend_segmentation_daily
 """
 
+_FETCH_LATEST_ADAPTIVE_SEGMENTATION_DATE = """
+SELECT MAX(date) FROM trend_segmentation_daily
+WHERE calculation_version = %s
+"""
+
 _FETCH_TREND_SEGMENTATION_SNAPSHOT = """
 SELECT symbol, date, lookback_bars, observation_count,
        segment_count, change_point_count, selected_rss, single_segment_rss,
@@ -254,6 +259,168 @@ FROM trend_segment_daily
 WHERE date = %s
 ORDER BY symbol, lookback_bars, segment_index
 """
+
+_UPSERT_PIVOT_SEGMENTATION_DAILY = """
+INSERT INTO pivot_segmentation_daily (
+    symbol, date, lookback_bars, observation_count,
+    pivot_count, segment_count, fit_rss,
+    search_radius_bars, min_segment_bars,
+    classification_config, resolution_diagnostics,
+    source_segmentation_method, source_segmentation_calculation_version,
+    method, calculation_version
+)
+VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+ON CONFLICT (symbol, date, lookback_bars) DO UPDATE SET
+    observation_count                       = EXCLUDED.observation_count,
+    pivot_count                             = EXCLUDED.pivot_count,
+    segment_count                           = EXCLUDED.segment_count,
+    fit_rss                                 = EXCLUDED.fit_rss,
+    search_radius_bars                      = EXCLUDED.search_radius_bars,
+    min_segment_bars                        = EXCLUDED.min_segment_bars,
+    classification_config                   = EXCLUDED.classification_config,
+    resolution_diagnostics                  = EXCLUDED.resolution_diagnostics,
+    source_segmentation_method              = EXCLUDED.source_segmentation_method,
+    source_segmentation_calculation_version = EXCLUDED.source_segmentation_calculation_version,
+    method                                  = EXCLUDED.method,
+    calculation_version                     = EXCLUDED.calculation_version
+"""
+
+_UPSERT_PIVOT_SEGMENT_DAILY = """
+INSERT INTO pivot_segment_daily (
+    symbol, date, lookback_bars, segment_index,
+    start_boundary_index, end_boundary_index_exclusive,
+    start_endpoint_bar_index, end_endpoint_bar_index,
+    start_endpoint_date, end_endpoint_date,
+    observation_count, return_interval_count, segment_type,
+    log_slope_per_bar, linearity_r2,
+    fitted_start_log_price, fitted_end_log_price, fitted_log_return,
+    actual_start_log_price, actual_end_log_price,
+    actual_start_close, actual_end_close, actual_log_return,
+    realized_volatility_daily, vol_adjusted_trend, efficiency_ratio,
+    end_point_type, pivot_seed_bar_index,
+    pivot_search_start_bar_index, pivot_search_end_bar_index,
+    pivot_displacement_bars, pivot_source_left_type, pivot_source_right_type,
+    pivot_source_segment_indices, pivot_resolution_status,
+    method, calculation_version
+)
+VALUES (
+    %s, %s, %s, %s, %s, %s, %s, %s, %s, %s,
+    %s, %s, %s, %s, %s, %s, %s, %s, %s, %s,
+    %s, %s, %s, %s, %s, %s, %s, %s, %s, %s,
+    %s, %s, %s, %s, %s, %s, %s
+)
+ON CONFLICT (symbol, date, lookback_bars, segment_index) DO UPDATE SET
+    start_boundary_index         = EXCLUDED.start_boundary_index,
+    end_boundary_index_exclusive = EXCLUDED.end_boundary_index_exclusive,
+    start_endpoint_bar_index     = EXCLUDED.start_endpoint_bar_index,
+    end_endpoint_bar_index       = EXCLUDED.end_endpoint_bar_index,
+    start_endpoint_date          = EXCLUDED.start_endpoint_date,
+    end_endpoint_date            = EXCLUDED.end_endpoint_date,
+    observation_count            = EXCLUDED.observation_count,
+    return_interval_count        = EXCLUDED.return_interval_count,
+    segment_type                 = EXCLUDED.segment_type,
+    log_slope_per_bar            = EXCLUDED.log_slope_per_bar,
+    linearity_r2                 = EXCLUDED.linearity_r2,
+    fitted_start_log_price       = EXCLUDED.fitted_start_log_price,
+    fitted_end_log_price         = EXCLUDED.fitted_end_log_price,
+    fitted_log_return            = EXCLUDED.fitted_log_return,
+    actual_start_log_price       = EXCLUDED.actual_start_log_price,
+    actual_end_log_price         = EXCLUDED.actual_end_log_price,
+    actual_start_close           = EXCLUDED.actual_start_close,
+    actual_end_close             = EXCLUDED.actual_end_close,
+    actual_log_return            = EXCLUDED.actual_log_return,
+    realized_volatility_daily    = EXCLUDED.realized_volatility_daily,
+    vol_adjusted_trend           = EXCLUDED.vol_adjusted_trend,
+    efficiency_ratio             = EXCLUDED.efficiency_ratio,
+    end_point_type               = EXCLUDED.end_point_type,
+    pivot_seed_bar_index         = EXCLUDED.pivot_seed_bar_index,
+    pivot_search_start_bar_index = EXCLUDED.pivot_search_start_bar_index,
+    pivot_search_end_bar_index   = EXCLUDED.pivot_search_end_bar_index,
+    pivot_displacement_bars      = EXCLUDED.pivot_displacement_bars,
+    pivot_source_left_type       = EXCLUDED.pivot_source_left_type,
+    pivot_source_right_type      = EXCLUDED.pivot_source_right_type,
+    pivot_source_segment_indices = EXCLUDED.pivot_source_segment_indices,
+    pivot_resolution_status      = EXCLUDED.pivot_resolution_status,
+    method                       = EXCLUDED.method,
+    calculation_version          = EXCLUDED.calculation_version
+"""
+
+_DELETE_PIVOT_SEGMENTS_FOR_LOOKBACK = """
+DELETE FROM pivot_segment_daily
+WHERE symbol = %s AND date = %s AND lookback_bars = %s
+"""
+
+_DELETE_UNCONFIGURED_PIVOT_SEGMENTS = """
+DELETE FROM pivot_segment_daily
+WHERE symbol = %s AND date = %s AND NOT (lookback_bars = ANY(%s))
+"""
+
+_DELETE_UNCONFIGURED_PIVOT_SUMMARIES = """
+DELETE FROM pivot_segmentation_daily
+WHERE symbol = %s AND date = %s AND NOT (lookback_bars = ANY(%s))
+"""
+
+_FETCH_LATEST_PIVOT_SEGMENTATION_DATE = """
+SELECT MAX(date) FROM pivot_segmentation_daily
+WHERE calculation_version = 'pivot_refined_segmentation_v2'
+"""
+
+_FETCH_PIVOT_SEGMENTATION_SNAPSHOT = """
+SELECT symbol, date, lookback_bars, observation_count,
+       pivot_count, segment_count, fit_rss,
+       search_radius_bars, min_segment_bars,
+       classification_config, resolution_diagnostics,
+       source_segmentation_method, source_segmentation_calculation_version,
+       method, calculation_version
+FROM pivot_segmentation_daily
+WHERE date = %s
+ORDER BY symbol, lookback_bars
+"""
+
+_PIVOT_SEGMENTATION_COLS = [
+    "symbol", "date", "lookback_bars", "observation_count", "pivot_count",
+    "segment_count", "fit_rss", "search_radius_bars", "min_segment_bars",
+    "classification_config", "resolution_diagnostics", "source_segmentation_method",
+    "source_segmentation_calculation_version", "method", "calculation_version",
+]
+
+_FETCH_PIVOT_SEGMENT_SNAPSHOT = """
+SELECT symbol, date, lookback_bars, segment_index,
+       start_boundary_index, end_boundary_index_exclusive,
+       start_endpoint_bar_index, end_endpoint_bar_index,
+       start_endpoint_date, end_endpoint_date,
+       observation_count, return_interval_count, segment_type,
+       log_slope_per_bar, linearity_r2,
+       fitted_start_log_price, fitted_end_log_price, fitted_log_return,
+       actual_start_log_price, actual_end_log_price,
+       actual_start_close, actual_end_close, actual_log_return,
+       realized_volatility_daily, vol_adjusted_trend, efficiency_ratio,
+       end_point_type, pivot_seed_bar_index,
+       pivot_search_start_bar_index, pivot_search_end_bar_index,
+       pivot_displacement_bars, pivot_source_left_type, pivot_source_right_type,
+       pivot_source_segment_indices, pivot_resolution_status,
+       method, calculation_version
+FROM pivot_segment_daily
+WHERE date = %s
+ORDER BY symbol, lookback_bars, segment_index
+"""
+
+_PIVOT_SEGMENT_COLS = [
+    "symbol", "date", "lookback_bars", "segment_index", "start_boundary_index",
+    "end_boundary_index_exclusive", "start_endpoint_bar_index",
+    "end_endpoint_bar_index", "start_endpoint_date", "end_endpoint_date",
+    "observation_count", "return_interval_count", "segment_type",
+    "log_slope_per_bar", "linearity_r2", "fitted_start_log_price",
+    "fitted_end_log_price", "fitted_log_return", "actual_start_log_price",
+    "actual_end_log_price", "actual_start_close", "actual_end_close",
+    "actual_log_return", "realized_volatility_daily", "vol_adjusted_trend",
+    "efficiency_ratio", "end_point_type", "pivot_seed_bar_index",
+    "pivot_search_start_bar_index", "pivot_search_end_bar_index",
+    "pivot_displacement_bars", "pivot_source_left_type", "pivot_source_right_type",
+    "pivot_source_segment_indices", "pivot_resolution_status", "method",
+    "calculation_version",
+]
+
 
 _UPSERT_TREND_PATTERN_DAILY = """
 INSERT INTO trend_pattern_daily (
@@ -656,6 +823,16 @@ def fetch_latest_trend_segmentation_date() -> date | None:
     return row[0] if row and row[0] is not None else None
 
 
+def fetch_latest_adaptive_segmentation_date() -> date | None:
+    """Return the latest canonical adaptive segmentation snapshot date."""
+    with get_conn() as conn:
+        row = conn.execute(
+            _FETCH_LATEST_ADAPTIVE_SEGMENTATION_DATE,
+            ("adaptive_segmentation_v3",),
+        ).fetchone()
+    return row[0] if row and row[0] is not None else None
+
+
 def fetch_trend_segmentation_snapshot(target_date: date) -> list[dict[str, Any]]:
     with get_conn() as conn:
         rows = conn.execute(_FETCH_TREND_SEGMENTATION_SNAPSHOT, (target_date,)).fetchall()
@@ -666,6 +843,150 @@ def fetch_trend_segment_snapshot(target_date: date) -> list[dict[str, Any]]:
     with get_conn() as conn:
         rows = conn.execute(_FETCH_TREND_SEGMENT_SNAPSHOT, (target_date,)).fetchall()
     return [dict(zip(_TREND_SEGMENT_COLS, row)) for row in rows]
+
+
+def upsert_pivot_segmentation_daily(
+    summaries: list[dict[str, Any]],
+    segments: list[dict[str, Any]],
+) -> None:
+    """Replace pivot-refined segment details and upsert summaries atomically."""
+    if not summaries:
+        return
+    symbol = str(summaries[0]["symbol"])
+    snapshot_date = summaries[0]["date"]
+    lookbacks = [int(row["lookback_bars"]) for row in summaries]
+    if any(
+        str(row["symbol"]) != symbol or row["date"] != snapshot_date for row in summaries
+    ):
+        raise ValueError("Pivot summaries must belong to one symbol/date snapshot.")
+    expected_counts = {
+        int(row["lookback_bars"]): int(row["segment_count"]) for row in summaries
+    }
+    expected_pivots = {
+        int(row["lookback_bars"]): int(row["pivot_count"]) for row in summaries
+    }
+    grouped: dict[int, list[dict[str, Any]]] = {lookback: [] for lookback in expected_counts}
+    for row in segments:
+        lookback_bars = int(row["lookback_bars"])
+        if (
+            str(row["symbol"]) != symbol
+            or row["date"] != snapshot_date
+            or lookback_bars not in grouped
+        ):
+            raise ValueError("Pivot segments must match the summary snapshot.")
+        grouped[lookback_bars].append(row)
+    for lookback_bars, rows in grouped.items():
+        ordered = sorted(rows, key=lambda row: int(row["segment_index"]))
+        if len(ordered) != expected_counts[lookback_bars] or [
+            int(row["segment_index"]) for row in ordered
+        ] != list(range(expected_counts[lookback_bars])):
+            raise ValueError("Pivot segment indexes must be complete and consecutive.")
+        pivot_count = sum(row["end_point_type"] in {"high", "low"} for row in ordered)
+        if (
+            pivot_count != expected_pivots[lookback_bars]
+            or pivot_count != len(ordered) - 1
+            or any(row["end_point_type"] not in {"high", "low"} for row in ordered[:-1])
+            or ordered[-1]["end_point_type"] != "window_end"
+        ):
+            raise ValueError("Pivot endpoint types do not match the summary counts.")
+
+    with get_conn() as conn:
+        conn.execute(
+            _DELETE_UNCONFIGURED_PIVOT_SEGMENTS,
+            (symbol, snapshot_date, lookbacks),
+        )
+        conn.execute(
+            _DELETE_UNCONFIGURED_PIVOT_SUMMARIES,
+            (symbol, snapshot_date, lookbacks),
+        )
+        for row in summaries:
+            lookback_bars = int(row["lookback_bars"])
+            conn.execute(
+                _DELETE_PIVOT_SEGMENTS_FOR_LOOKBACK,
+                (symbol, snapshot_date, lookback_bars),
+            )
+            conn.execute(
+                _UPSERT_PIVOT_SEGMENTATION_DAILY,
+                (
+                    symbol,
+                    snapshot_date,
+                    lookback_bars,
+                    row["observation_count"],
+                    row["pivot_count"],
+                    row["segment_count"],
+                    row.get("fit_rss"),
+                    row["search_radius_bars"],
+                    row["min_segment_bars"],
+                    Jsonb(row.get("classification_config", {})),
+                    Jsonb(row.get("resolution_diagnostics", {})),
+                    row["source_segmentation_method"],
+                    row["source_segmentation_calculation_version"],
+                    row["method"],
+                    row["calculation_version"],
+                ),
+            )
+        for row in segments:
+            conn.execute(
+                _UPSERT_PIVOT_SEGMENT_DAILY,
+                (
+                    row["symbol"],
+                    row["date"],
+                    row["lookback_bars"],
+                    row["segment_index"],
+                    row["start_boundary_index"],
+                    row["end_boundary_index_exclusive"],
+                    row["start_endpoint_bar_index"],
+                    row["end_endpoint_bar_index"],
+                    row["start_endpoint_date"],
+                    row["end_endpoint_date"],
+                    row["observation_count"],
+                    row["return_interval_count"],
+                    row["segment_type"],
+                    row.get("log_slope_per_bar"),
+                    row.get("linearity_r2"),
+                    row.get("fitted_start_log_price"),
+                    row.get("fitted_end_log_price"),
+                    row.get("fitted_log_return"),
+                    row.get("actual_start_log_price"),
+                    row.get("actual_end_log_price"),
+                    row.get("actual_start_close"),
+                    row.get("actual_end_close"),
+                    row.get("actual_log_return"),
+                    row.get("realized_volatility_daily"),
+                    row.get("vol_adjusted_trend"),
+                    row.get("efficiency_ratio"),
+                    row["end_point_type"],
+                    row.get("pivot_seed_bar_index"),
+                    row.get("pivot_search_start_bar_index"),
+                    row.get("pivot_search_end_bar_index"),
+                    row.get("pivot_displacement_bars"),
+                    row.get("pivot_source_left_type"),
+                    row.get("pivot_source_right_type"),
+                    Jsonb(row.get("pivot_source_segment_indices", [])),
+                    row.get("pivot_resolution_status"),
+                    row["method"],
+                    row["calculation_version"],
+                ),
+            )
+        conn.commit()
+
+
+def fetch_latest_pivot_segmentation_date() -> date | None:
+    with get_conn() as conn:
+        row = conn.execute(_FETCH_LATEST_PIVOT_SEGMENTATION_DATE).fetchone()
+    return row[0] if row and row[0] is not None else None
+
+
+def fetch_pivot_segmentation_snapshot(target_date: date) -> list[dict[str, Any]]:
+    with get_conn() as conn:
+        rows = conn.execute(_FETCH_PIVOT_SEGMENTATION_SNAPSHOT, (target_date,)).fetchall()
+    return [dict(zip(_PIVOT_SEGMENTATION_COLS, row)) for row in rows]
+
+
+def fetch_pivot_segment_snapshot(target_date: date) -> list[dict[str, Any]]:
+    with get_conn() as conn:
+        rows = conn.execute(_FETCH_PIVOT_SEGMENT_SNAPSHOT, (target_date,)).fetchall()
+    return [dict(zip(_PIVOT_SEGMENT_COLS, row)) for row in rows]
 
 
 def upsert_trend_pattern_daily(rows: list[dict[str, Any]]) -> None:

@@ -22,11 +22,15 @@ indicators:
       - {label: 40d, far_bars: 40, near_bars: 0}
       - {label: 60d, far_bars: 60, near_bars: 0}
 
-  adaptive_trend:
-    lookbacks: [60]
+  adaptive_segmentation:
+    lookbacks: [250]
     min_segment_bars: 5
-    max_segments: 5
-    bic_penalty_multiplier: 3.0
+    max_segments_cap: 10
+    bic_penalty_multiplier: 2.0
+    segment_classification:
+      min_abs_fitted_log_return: 0.02
+      min_linearity_r2: 0.35
+      min_abs_vol_adjusted_trend: 0.75
     search:
       exact_candidate_budget: 100000
       exhaustive_batch_size: 2048
@@ -36,6 +40,10 @@ indicators:
       rss_improvement_tolerance: 1.0e-10
       pair_refinement_enabled: true
       pair_refinement_radius: 5
+
+  pivot_refinement:
+    search_radius_bars: 5
+    min_segment_bars: 5
 
   trend_pattern:
     # 单段方向识别的最低拟合 log return 绝对值。
@@ -109,7 +117,7 @@ pipeline:
   source: tiingo
 
 validation:
-  adaptive_trend:
+  adaptive_segmentation:
     # 默认验证样本；CLI 的 --symbols 会覆盖此列表。不存在的 ticker 会记录 warning 并跳过。
     symbols: [SPY, QQQ, IBIT, GLD, XLE, AAPL, MSFT, NVDA, TSLA]
 

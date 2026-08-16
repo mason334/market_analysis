@@ -6,7 +6,7 @@ import numpy as np
 import pandas as pd
 
 from market_analysis.config import settings
-from market_analysis.pipeline import validate_adaptive_trend as validation
+from market_analysis.pipeline import validate_adaptive_segmentation as validation
 
 
 def _frame(size: int = 24) -> pd.DataFrame:
@@ -46,10 +46,10 @@ def test_anchor_offsets_generate_explicit_local_comparison_pairs() -> None:
     assert calculation_offsets == [0, 2, 10, 12, 20, 22]
 
 
-def test_production_parameters_default_to_five_segments(monkeypatch) -> None:
-    monkeypatch.setattr(settings, "indicators", {"adaptive_trend": {}})
+def test_production_parameters_default_to_recommended_segment_cap(monkeypatch) -> None:
+    monkeypatch.setattr(settings, "indicators", {"adaptive_segmentation": {}})
 
-    assert validation._production_parameters() == validation.ParameterSet(3.0, 5, 5)
+    assert validation._production_parameters() == validation.ParameterSet(3.0, 5, 10)
 
 
 def test_default_output_dir_uses_run_timestamp() -> None:
@@ -133,7 +133,7 @@ def test_full_grid_validation_writes_report_files(tmp_path, monkeypatch) -> None
         settings,
         "indicators",
         {
-            "adaptive_trend": {
+            "adaptive_segmentation": {
                 "lookbacks": [20],
                 "min_segment_bars": 4,
                 "max_segments": 2,
@@ -146,7 +146,7 @@ def test_full_grid_validation_writes_report_files(tmp_path, monkeypatch) -> None
         settings,
         "validation",
         {
-            "adaptive_trend": {
+            "adaptive_segmentation": {
                 "symbols": ["TEST"],
                 "anchor_offsets": [0],
                 "anchor_comparison_step_bars": 10,
@@ -161,7 +161,7 @@ def test_full_grid_validation_writes_report_files(tmp_path, monkeypatch) -> None
     )
     monkeypatch.setattr(validation, "fetch_ohlcv", lambda symbol, source="": frame)
 
-    report = validation.run_adaptive_trend_validation(
+    report = validation.run_adaptive_segmentation_validation(
         target_date=date(2026, 2, 6),
         output_dir=tmp_path,
         full_grid=True,
@@ -196,7 +196,7 @@ def test_full_grid_validation_writes_report_files(tmp_path, monkeypatch) -> None
     )
     assert np.isclose(comparison.loc[0, "fit_complexity_score"], expected_score)
     html = report.read_text(encoding="utf-8")
-    assert "Adaptive trend segmentation validation" in html
+    assert "Adaptive segmentation validation" in html
     assert "bic=2|min=4|max=2" in html
     assert "展开查看 Parameter comparison 字段与算法说明" in html
     assert "local_breakpoint_set_stability" in html

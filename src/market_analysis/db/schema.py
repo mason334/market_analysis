@@ -180,6 +180,104 @@ CREATE INDEX IF NOT EXISTS trend_segment_daily_symbol_date_idx
 """
 
 
+_CREATE_PIVOT_SEGMENTATION_DAILY = """
+CREATE TABLE IF NOT EXISTS pivot_segmentation_daily (
+    symbol                                  TEXT  NOT NULL,
+    date                                    DATE  NOT NULL,
+    lookback_bars                           INT   NOT NULL,
+    observation_count                       INT   NOT NULL,
+    pivot_count                             INT   NOT NULL,
+    segment_count                           INT   NOT NULL,
+    fit_rss                                 FLOAT,
+    search_radius_bars                      INT   NOT NULL,
+    min_segment_bars                        INT   NOT NULL,
+    classification_config                   JSONB NOT NULL DEFAULT '{}'::jsonb,
+    resolution_diagnostics                  JSONB NOT NULL DEFAULT '{}'::jsonb,
+    source_segmentation_method              TEXT  NOT NULL,
+    source_segmentation_calculation_version TEXT  NOT NULL,
+    method                                  TEXT  NOT NULL,
+    calculation_version                     TEXT  NOT NULL,
+    PRIMARY KEY (symbol, date, lookback_bars),
+    CHECK (lookback_bars >= 2),
+    CHECK (observation_count = lookback_bars),
+    CHECK (pivot_count >= 0),
+    CHECK (segment_count = pivot_count + 1),
+    CHECK (search_radius_bars >= 0),
+    CHECK (min_segment_bars >= 2)
+);
+"""
+
+_CREATE_PIVOT_SEGMENTATION_DAILY_IDX = """
+CREATE INDEX IF NOT EXISTS pivot_segmentation_daily_date_lookback_idx
+    ON pivot_segmentation_daily (date DESC, lookback_bars);
+CREATE INDEX IF NOT EXISTS pivot_segmentation_daily_symbol_date_idx
+    ON pivot_segmentation_daily (symbol, date DESC);
+"""
+
+
+_CREATE_PIVOT_SEGMENT_DAILY = """
+CREATE TABLE IF NOT EXISTS pivot_segment_daily (
+    symbol                           TEXT  NOT NULL,
+    date                             DATE  NOT NULL,
+    lookback_bars                    INT   NOT NULL,
+    segment_index                    INT   NOT NULL,
+    start_boundary_index             INT   NOT NULL,
+    end_boundary_index_exclusive     INT   NOT NULL,
+    start_endpoint_bar_index         INT   NOT NULL,
+    end_endpoint_bar_index           INT   NOT NULL,
+    start_endpoint_date              DATE  NOT NULL,
+    end_endpoint_date                DATE  NOT NULL,
+    observation_count                INT   NOT NULL,
+    return_interval_count            INT   NOT NULL,
+    segment_type                     TEXT  NOT NULL,
+    log_slope_per_bar                FLOAT,
+    linearity_r2                     FLOAT,
+    fitted_start_log_price           FLOAT,
+    fitted_end_log_price             FLOAT,
+    fitted_log_return                FLOAT,
+    actual_start_log_price           FLOAT,
+    actual_end_log_price             FLOAT,
+    actual_start_close               FLOAT,
+    actual_end_close                 FLOAT,
+    actual_log_return                FLOAT,
+    realized_volatility_daily        FLOAT,
+    vol_adjusted_trend               FLOAT,
+    efficiency_ratio                 FLOAT,
+    end_point_type                   TEXT  NOT NULL,
+    pivot_seed_bar_index             INT,
+    pivot_search_start_bar_index     INT,
+    pivot_search_end_bar_index       INT,
+    pivot_displacement_bars          INT,
+    pivot_source_left_type           TEXT,
+    pivot_source_right_type          TEXT,
+    pivot_source_segment_indices     JSONB NOT NULL DEFAULT '[]'::jsonb,
+    pivot_resolution_status          TEXT,
+    method                           TEXT  NOT NULL,
+    calculation_version              TEXT  NOT NULL,
+    PRIMARY KEY (symbol, date, lookback_bars, segment_index),
+    CHECK (segment_index >= 0),
+    CHECK (start_boundary_index >= 0),
+    CHECK (end_boundary_index_exclusive > start_boundary_index),
+    CHECK (end_endpoint_bar_index >= start_endpoint_bar_index),
+    CHECK (observation_count = end_boundary_index_exclusive - start_boundary_index),
+    CHECK (return_interval_count = end_endpoint_bar_index - start_endpoint_bar_index),
+    CHECK (segment_type IN ('up', 'down', 'flat')),
+    CHECK (end_point_type IN ('high', 'low', 'window_end')),
+    CHECK (pivot_source_left_type IS NULL OR pivot_source_left_type IN ('up', 'down', 'flat')),
+    CHECK (pivot_source_right_type IS NULL OR pivot_source_right_type IN ('up', 'down', 'flat'))
+);
+"""
+
+_CREATE_PIVOT_SEGMENT_DAILY_IDX = """
+CREATE INDEX IF NOT EXISTS pivot_segment_daily_date_lookback_idx
+    ON pivot_segment_daily (date DESC, lookback_bars);
+CREATE INDEX IF NOT EXISTS pivot_segment_daily_symbol_date_idx
+    ON pivot_segment_daily (symbol, date DESC);
+CREATE INDEX IF NOT EXISTS pivot_segment_daily_date_endpoint_type_idx
+    ON pivot_segment_daily (date DESC, lookback_bars, end_point_type);
+"""
+
+
 _CREATE_TREND_PATTERN_DAILY = """
 CREATE TABLE IF NOT EXISTS trend_pattern_daily (
     symbol                              TEXT NOT NULL,
@@ -309,6 +407,10 @@ def init_schema() -> None:
         conn.execute(_CREATE_TREND_SEGMENT_DAILY)
         _execute_statements(conn, _ALTER_TREND_SEGMENT_DAILY)
         _execute_statements(conn, _CREATE_TREND_SEGMENT_DAILY_IDX)
+        conn.execute(_CREATE_PIVOT_SEGMENTATION_DAILY)
+        _execute_statements(conn, _CREATE_PIVOT_SEGMENTATION_DAILY_IDX)
+        conn.execute(_CREATE_PIVOT_SEGMENT_DAILY)
+        _execute_statements(conn, _CREATE_PIVOT_SEGMENT_DAILY_IDX)
         conn.execute(_CREATE_TREND_PATTERN_DAILY)
         _execute_statements(conn, _ALTER_TREND_PATTERN_DAILY)
         _execute_statements(conn, _CREATE_TREND_PATTERN_DAILY_IDX)

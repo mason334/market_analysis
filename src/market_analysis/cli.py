@@ -63,25 +63,46 @@ def run_sector_heat() -> None:
     typer.echo(f"Done. {total} sectors written to sector_heat_daily.")
 
 
-@app.command("run-trend-segmentation-experiment")
-def run_trend_segmentation_experiment() -> None:
-    """Run the adaptive piecewise-linear trend segmentation experiment."""
+@app.command("run-adaptive-segmentation")
+def run_adaptive_segmentation() -> None:
+    """Persist the canonical adaptive segmentation snapshot."""
     from market_analysis.db.schema import init_schema
-    from market_analysis.pipeline.run_adaptive_trend_experiment import (
-        run_adaptive_trend_experiment_pipeline,
+    from market_analysis.pipeline.run_adaptive_segmentation import (
+        run_adaptive_segmentation_pipeline,
     )
 
     init_schema()
-    total = run_adaptive_trend_experiment_pipeline()
-    typer.echo(f"Done. {total} symbols written to adaptive trend experiment tables.")
+    total = run_adaptive_segmentation_pipeline(show_progress=True)
+    typer.echo(f"Done. {total} symbols written to adaptive segmentation tables.")
 
 
-@app.command("compute-adaptive-trend")
-def compute_adaptive_trend_cmd(
+@app.command("run-pivot-segmentation")
+def run_pivot_segmentation_cmd(
+    target_date: str | None = typer.Option(
+        None,
+        "--date",
+        "-d",
+        help="Adaptive segmentation snapshot date; defaults to the latest snapshot.",
+    ),
+) -> None:
+    """Refine persisted adaptive segments with close-price pivots."""
+    from market_analysis.db.schema import init_schema
+    from market_analysis.pipeline.run_pivot_segmentation import (
+        run_pivot_segmentation_pipeline,
+    )
+
+    init_schema()
+    parsed_date = None if target_date is None else date.fromisoformat(target_date)
+    total = run_pivot_segmentation_pipeline(parsed_date, show_progress=True)
+    typer.echo(f"Done. {total} symbol/lookback snapshots written to pivot segmentation tables.")
+
+
+@app.command("compute-adaptive-segmentation")
+def compute_adaptive_segmentation_cmd(
     symbol: str = typer.Option(..., "--symbol", help="Ticker symbol."),
-    lookback: int = typer.Option(60, "--lookback", min=40, max=250),
+    lookback: int = typer.Option(250, "--lookback", min=40, max=500),
     min_segment_bars: int = typer.Option(5, "--min-segment-bars", min=2, max=30),
-    max_segments: int = typer.Option(5, "--max-segments", min=1, max=10),
+    max_segments: int = typer.Option(10, "--max-segments", min=1, max=20),
     bic_penalty_multiplier: float = typer.Option(
         3.0,
         "--bic-penalty-multiplier",
@@ -90,12 +111,12 @@ def compute_adaptive_trend_cmd(
     ),
     target_date: str = typer.Option("", "--date", help="Optional end date YYYY-MM-DD."),
 ) -> None:
-    """Compute one read-only adaptive trend result and emit JSON."""
-    from market_analysis.pipeline.compute_adaptive_trend import (
-        compute_adaptive_trend_for_symbol,
+    """Compute one read-only adaptive segmentation result and emit JSON."""
+    from market_analysis.pipeline.compute_adaptive_segmentation import (
+        compute_adaptive_segmentation_for_symbol,
     )
 
-    result = compute_adaptive_trend_for_symbol(
+    result = compute_adaptive_segmentation_for_symbol(
         symbol,
         lookback_bars=lookback,
         min_segment_bars=min_segment_bars,
@@ -106,12 +127,12 @@ def compute_adaptive_trend_cmd(
     typer.echo(json.dumps(result, default=str, allow_nan=False, separators=(",", ":")))
 
 
-@app.command("validate-trend-segmentation")
-def validate_trend_segmentation(
+@app.command("validate-adaptive-segmentation")
+def validate_adaptive_segmentation(
     symbols: str = typer.Option(
         "",
         "--symbols",
-        help="Comma-separated symbols; defaults to validation.adaptive_trend.symbols.",
+        help="Comma-separated symbols; defaults to validation.adaptive_segmentation.symbols.",
     ),
     target_date: str = typer.Option(
         str(date.today()),
@@ -124,7 +145,7 @@ def validate_trend_segmentation(
         "--output-dir",
         help=(
             "Report directory; defaults to "
-            "artifacts/adaptive_trend_validation/<date>/<run_timestamp>."
+            "artifacts/adaptive_segmentation_validation/<date>/<run_timestamp>."
         ),
     ),
     full_grid: bool = typer.Option(
@@ -134,12 +155,12 @@ def validate_trend_segmentation(
     ),
 ) -> None:
     """Generate a read-only validation report with parameter-level progress."""
-    from market_analysis.pipeline.validate_adaptive_trend import (
-        run_adaptive_trend_validation,
+    from market_analysis.pipeline.validate_adaptive_segmentation import (
+        run_adaptive_segmentation_validation,
     )
 
     selected_symbols = [value.strip() for value in symbols.split(",") if value.strip()]
-    report = run_adaptive_trend_validation(
+    report = run_adaptive_segmentation_validation(
         symbols=selected_symbols or None,
         target_date=date.fromisoformat(target_date),
         output_dir=output_dir,
@@ -147,6 +168,53 @@ def validate_trend_segmentation(
         show_progress=True,
     )
     typer.echo(f"Validation report written to {report}")
+
+
+@app.command("run-trend-segmentation-experiment", hidden=True)
+def run_trend_segmentation_experiment_legacy() -> None:
+    """Compatibility alias for run-adaptive-segmentation."""
+    run_adaptive_segmentation()
+
+
+@app.command("compute-adaptive-trend", hidden=True)
+def compute_adaptive_trend_legacy(
+    symbol: str = typer.Option(..., "--symbol"),
+    lookback: int = typer.Option(250, "--lookback", min=40, max=500),
+    min_segment_bars: int = typer.Option(5, "--min-segment-bars", min=2, max=30),
+    max_segments: int = typer.Option(10, "--max-segments", min=1, max=20),
+    bic_penalty_multiplier: float = typer.Option(
+        3.0,
+        "--bic-penalty-multiplier",
+        min=0.1,
+        max=10.0,
+    ),
+    target_date: str = typer.Option("", "--date"),
+) -> None:
+    """Compatibility alias for compute-adaptive-segmentation."""
+    compute_adaptive_segmentation_cmd(
+        symbol=symbol,
+        lookback=lookback,
+        min_segment_bars=min_segment_bars,
+        max_segments=max_segments,
+        bic_penalty_multiplier=bic_penalty_multiplier,
+        target_date=target_date,
+    )
+
+
+@app.command("validate-trend-segmentation", hidden=True)
+def validate_trend_segmentation_legacy(
+    symbols: str = typer.Option("", "--symbols"),
+    target_date: str = typer.Option(str(date.today()), "--date", "-d"),
+    output_dir: Path | None = typer.Option(None, "--output-dir"),
+    full_grid: bool = typer.Option(False, "--full-grid"),
+) -> None:
+    """Compatibility alias for validate-adaptive-segmentation."""
+    validate_adaptive_segmentation(
+        symbols=symbols,
+        target_date=target_date,
+        output_dir=output_dir,
+        full_grid=full_grid,
+    )
 
 
 @app.command("run-trend-pattern-analysis")

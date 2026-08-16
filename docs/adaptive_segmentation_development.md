@@ -1,11 +1,11 @@
 # 自适应分段算法开发记录
 
-> 文档状态：开发中
-> 当前生产口径：`adaptive_trend_v3`
-> 当前生产方法：`continuous_piecewise_log_linear_deterministic_hybrid_bic`
-> 已确认待实施方案：`MA-PIVOT-SEG v2.0.0`
-> 待实施源分段口径：`adaptive_segmentation_v3`
-> 待实施派生口径：`pivot_refined_segmentation_v2`
+> 文档状态：已实施
+> 当前初分段口径：`adaptive_segmentation_v3`
+> 当前初分段方法：`continuous_piecewise_log_linear_deterministic_hybrid_bic`
+> 当前精炼分段口径：`pivot_refined_segmentation_v2`
+> 当前精炼分段方法：`pivot_seeded_continuous_piecewise_log_linear`
+> 已实施方案：`MA-PIVOT-SEG v2.0.0`
 > 最近更新：2026-08-15
 
 ## 1. 文档目的
@@ -15,7 +15,7 @@
 - 固化当前已经实现的数学口径和数据语义；
 - 记录长 lookback 下的性能问题及其规模；
 - 区分已实现功能、已确认设计方向和仍待验证的候选方案；
-- 跟踪 `adaptive_trend_v3` 的设计、验证、实施和下游影响；
+- 跟踪自适应初分段与 Pivot 精炼分段的设计、验证、实施和下游影响；
 - 为后续开发 session 提供统一交接入口。
 
 本文档不是当前生产行为的替代说明。代码、测试、`AGENTS.md` 和数据库实际结构仍是当前行为的
@@ -23,11 +23,11 @@
 
 ## 2. 当前工作状态
 
-### 2.1 已实现：`adaptive_trend_v3`
+### 2.1 已实现：`adaptive_segmentation_v3` 与 `pivot_refined_segmentation_v2`
 
-当前 `src/market_analysis/indicators/adaptive_trend.py` 已实现：
+当前 `src/market_analysis/indicators/adaptive_segmentation.py` 已实现：
 
-- 默认只计算 60 bars 生产 lookback；
+- 默认只计算 250 bars 生产 lookback；
 - 候选数不超过预算时执行分批精确穷举；
 - 超过预算时执行确定性 beam expansion、单断点全域优化和相邻双断点局部优化；
 - 对每组断点执行全局连续分段 log-linear OLS；
@@ -40,11 +40,15 @@
 
 ```yaml
 indicators:
-  adaptive_trend:
-    lookbacks: [60]
+  adaptive_segmentation:
+    lookbacks: [250]
     min_segment_bars: 5
-    max_segments: 5
+    max_segments_cap: 10
     bic_penalty_multiplier: 3.0
+    segment_classification:
+      min_abs_fitted_log_return: 0.02
+      min_linearity_r2: 0.35
+      min_abs_vol_adjusted_trend: 0.75
     search:
       exact_candidate_budget: 100000
       exhaustive_batch_size: 2048
@@ -54,11 +58,16 @@ indicators:
       rss_improvement_tolerance: 1.0e-10
       pair_refinement_enabled: true
       pair_refinement_radius: 5
+
+  pivot_refinement:
+    search_radius_bars: 5
+    min_segment_bars: 5
 ```
 
-60 bars 固定输出最多允许 5 段并保持 exact。自定义 250 bars、10 段会从
-`K = 4` 起进入 `hybrid_approximate`。summary 明确保存搜索模式、全局最优保证、实际候选数、
-refinement 收敛状态、搜索配置和逐 `K` 诊断；自定义单标的计算由只读 JSON CLI 提供。
+250 bars 默认窗口的最大分段数上限为 10，候选空间超过预算时进入
+`hybrid_approximate`。summary 明确保存搜索模式、全局最优保证、实际候选数、refinement
+收敛状态、搜索配置和逐 `K` 诊断。随后 `pivot_segmentation.py` 对初始段分类、合并，只用
+close 在 seed 左右各 5 bars 搜索确定性 pivot，并将连续重拟合结果写入两张独立新表。
 
 ### 2.2 版本来源与 v1 → v2 沿革
 
@@ -1278,22 +1287,20 @@ v3 已增加以下摘要字段：`search_mode`、`is_global_optimum`、`candidat
 - 两张adaptive表新增审计/拟合锚点字段；新增compute-adaptive-trend CLI；dashboard需要同步部署并重启。
 ```
 
-## 17. 已确认待实施：自适应初分段与 Pivot 精炼分段
+## 17. 已实施：自适应初分段与 Pivot 精炼分段
 
 ### 17.1 方案元数据
 
 - **方案名称**：自适应初分段与 Pivot 精炼分段
 - **方案编号**：`MA-PIVOT-SEG`
 - **版本号**：`v2.0.0`
-- **状态**：已确认（文档阶段，尚未实施）
+- **状态**：已实施
 - **确认日期**：2026-08-15
+- **实施日期**：2026-08-15
 
-本节记录下一阶段正式开发口径。当前代码、配置、CLI 和数据库尚未按本节修改；在实施完成、
-测试通过并更新本节状态前，第 2～16 节描述的 `adaptive_trend_v3` 仍是生产事实。
-
-本次只更新开发文档，不修改 Python 代码、配置、数据库 schema、CLI 或下游 Dashboard。
-本文档已按方案先行规范命名为 `adaptive_segmentation_development.md`；Python 模块、配置、CLI 和
-计算版本的命名重构仍留待代码实施阶段完成。
+本节是当前正式开发口径。代码、配置、幂等数据库 schema、CLI、测试和下游查询函数均已按本节
+实现；第 2～16 节保留为历史沿革与旧口径说明。实际数据库仍需在部署时运行
+`market-analysis init-db` 才会创建新表。
 
 ### 17.2 目标与边界
 
@@ -1313,7 +1320,7 @@ v3 已增加以下摘要字段：`search_mode`、`is_global_optimum`、`candidat
 
 `adaptive_trend_v3` 的算法职责是“选择分段”，不是对市场趋势作最终判断，因此实施时统一改为：
 
-| 当前名称 | 待实施规范名称 | 说明 |
+| 历史名称 | 当前规范名称 | 说明 |
 |---|---|---|
 | `adaptive_trend_v3` | `adaptive_segmentation_v3` | 计算版本的语义更名 |
 | `adaptive_trend.py` | `adaptive_segmentation.py` | 纯计算模块 |
@@ -1331,7 +1338,7 @@ v3 已增加以下摘要字段：`search_mode`、`is_global_optimum`、`candidat
 
 ### 17.4 默认生产参数
 
-待实施默认配置为：
+当前默认配置为：
 
 ```yaml
 indicators:
@@ -1593,6 +1600,13 @@ market-analysis run-adaptive-segmentation
 market-analysis run-pivot-segmentation
 ```
 
+`run-adaptive-segmentation` 批量运行时按 symbol 显示当前处理标的、已处理数/总数、完成百分比和
+预计剩余时间；成功写库数量仍由命令结束信息单独报告。跳过或计算失败但继续执行的 symbol 也计入
+“已处理数”，避免进度条与实际循环位置不一致。
+
+`run-pivot-segmentation` 使用相同的进度展示，并额外显示当前 lookback bars。其处理单位是一个
+`symbol/lookback_bars` 快照；默认只配置 250 bars，因此默认情况下快照数等于 symbol 数。
+
 `run-pivot-segmentation` 读取已持久化的 `adaptive_segmentation_v3` summary/segments，同时从
 `market_data.daily_bars_split_adjusted` 读取同一 symbol、date 和 250-bars close，不在
 `indicators/` 内连接数据库。
@@ -1631,37 +1645,37 @@ market-analysis compute-adaptive-segmentation --symbol AAPL --lookback 250
 
 #### 阶段 A：命名与基线
 
-- [ ] 冻结当前 `adaptive_trend_v3` golden tests；
-- [ ] 完成模块、配置、日志、CLI 和版本名称迁移；
-- [ ] 保留历史数据和 legacy CLI 兼容；
-- [ ] 将默认生产 lookback 改为 250 bars。
+- [x] 冻结并迁移现有自适应分段测试；
+- [x] 完成模块、配置、日志、CLI 和版本名称迁移；
+- [x] 保留历史数据和 legacy CLI 兼容；
+- [x] 将默认生产 lookback 改为 250 bars。
 
 #### 阶段 B：分类、合并与 Pivot 搜索
 
-- [ ] 实现独立纯计算分类函数；
-- [ ] 实现同类相邻段稳定合并；
-- [ ] 实现六种 pivot seed 映射；
-- [ ] 实现 ±5 bars close 极值搜索；
-- [ ] 实现最短段、同类 pivot 和冲突消解规则。
+- [x] 实现独立纯计算分类函数；
+- [x] 实现同类相邻段稳定合并；
+- [x] 实现六种 pivot seed 映射；
+- [x] 实现 ±5 bars close 极值搜索；
+- [x] 实现最短段、同类 pivot 和冲突消解规则。
 
 #### 阶段 C：连续重拟合与持久化
 
-- [ ] 实现固定 pivot 横坐标的全局连续 log-linear OLS；
-- [ ] 实现无歧义的半开边界和共享端点字段；
-- [ ] 创建两张幂等新表和 upsert/query 函数；
-- [ ] 增加批量 pipeline、日志、CLI 和失败隔离。
+- [x] 实现固定 pivot 横坐标的全局连续 log-linear OLS；
+- [x] 实现无歧义的半开边界和共享端点字段；
+- [x] 创建两张幂等新表和 upsert/query 函数；
+- [x] 增加批量 pipeline、日志、CLI 和失败隔离。
 
 #### 阶段 D：测试与下游交付
 
-- [ ] 测试 `up/down/flat` 阈值边界；
-- [ ] 测试六种转向、平台双 seed、窗口边缘、同价和冲突；
-- [ ] 断言 pivot 严格递增、分段无重叠/遗漏、拟合在 knot 连续；
-- [ ] 断言非末段 `end_point_type` 均为 `high/low`、末段为 `window_end`，且
+- [x] 测试 `up/down/flat` 阈值边界；
+- [x] 测试六种转向、平台双 seed、窗口边缘、同价和冲突；
+- [x] 断言 pivot 严格递增、分段无重叠/遗漏、拟合在 knot 连续；
+- [x] 断言非末段 `end_point_type` 均为 `high/low`、末段为 `window_end`，且
   `pivot_count = segment_count - 1`；
-- [ ] 断言各段实际 log return 之和等于窗口实际 log return；
-- [ ] 测试 schema、upsert、旧明细清理和快照查询契约；
-- [ ] 运行 `ruff check` 和完整 `pytest`；
-- [ ] 同步实施 `ID-PIVOT-SNAPSHOT v1.1.0`。
+- [x] 断言各段实际 log return 之和等于窗口实际 log return；
+- [x] 测试 schema、upsert、旧明细清理和快照查询契约；
+- [x] 对本方案变更文件运行 `ruff check`，并运行完整 `pytest`；
+- [x] 同步实施 `ID-PIVOT-SNAPSHOT v1.1.0`。
 
 验收时至少使用单边上涨、单边下跌、V 形、倒 V 形、上涨平台后下跌、下跌平台后上涨、窄幅横盘、
 相邻 pivot 冲突和窗口边缘 pivot 等合成路径，并抽取代表性 ETF/Option Active 个股进行人工图形复核。
@@ -1675,10 +1689,22 @@ market-analysis compute-adaptive-segmentation --symbol AAPL --lookback 250
 - 确认 pivot bar 映射为右段半开边界 `boundary = pivot_bar_index + 1`；
 - 确认最终拟合使用固定 pivot 横坐标的全局连续 log-close OLS，不强制经过 pivot price；
 - 确认 pivot 元数据归属于左侧 segment 的终点，结果进入 summary + segment 两张独立表；
-- 确认本次只更新两个项目的开发文档，不修改代码、配置或数据库。
+- 方案随后于同日进入实施；实际数据库迁移留给部署时执行 `market-analysis init-db`。
 
 版本记录：
 
 - `v1.0.0`：初始草案；pivot 在 OHLC high/low 中搜索，并计划使用 summary、point、segment 三表；
-- `v2.0.0`：当前方案；pivot 统一在 close 中搜索，删除独立 point 表，将节点及审计字段合并到
+- `v2.0.0`：已实施方案；pivot 统一在 close 中搜索，删除独立 point 表，将节点及审计字段合并到
   `pivot_segment_daily` 的 segment 终点。
+
+### 17.18 实施结果
+
+- 规范初分段模块、批处理、单标的计算和验证入口已迁移到 `adaptive_segmentation` 命名；旧模块与
+  CLI 作为隐藏兼容入口保留一个迁移周期；
+- 新增纯计算 `pivot_segmentation.py`、批处理 `run_pivot_segmentation.py`、两张幂等表及完整
+  upsert/query 契约；
+- 合成测试覆盖六种方向转换、平台双 seed、同价极值、窗口边缘、相邻冲突、连续拟合、收益可加性
+  和数据库契约；
+- 2026-08-15 验证结果：本方案变更文件 Ruff 通过，完整 pytest 为 `139 passed`；
+- 本次未连接或修改实际 PostgreSQL；部署时需先运行 `market-analysis init-db`，再按第 17.13 节
+  顺序生成快照。

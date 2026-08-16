@@ -4,13 +4,14 @@ import numpy as np
 import pandas as pd
 import pytest
 
-from market_analysis.indicators.adaptive_trend import (
+from market_analysis.indicators.adaptive_segmentation import (
+    DEFAULT_LOOKBACKS,
     _best_boundaries,
     _boundary_candidates,
     _fit_continuous_piecewise,
     candidate_count,
     compute_adaptive_segmentation,
-    compute_adaptive_trend_experiment,
+    compute_adaptive_segmentation_snapshots,
     recommended_max_segments,
     reconstruct_adaptive_fit,
 )
@@ -51,7 +52,7 @@ def test_v_shape_finds_unconfigured_turning_point() -> None:
     assert segments[1]["log_slope_per_bar"] > 0
     assert summary["bic_improvement"] > 0
     assert summary["method"] == "continuous_piecewise_log_linear_deterministic_hybrid_bic"
-    assert summary["calculation_version"] == "adaptive_trend_v3"
+    assert summary["calculation_version"] == "adaptive_segmentation_v3"
     assert summary["search_mode"] == "exact"
     assert summary["is_global_optimum"] is True
 
@@ -140,7 +141,7 @@ def test_minimum_segment_length_is_enforced() -> None:
 def test_experiment_supports_multiple_lookbacks() -> None:
     df = _frame(4.0 + 0.005 * np.arange(80))
 
-    summaries, segments = compute_adaptive_trend_experiment(
+    summaries, segments = compute_adaptive_segmentation_snapshots(
         "TEST",
         df,
         {"lookbacks": [40, 60], "min_segment_bars": 5, "max_segments": 3},
@@ -150,14 +151,8 @@ def test_experiment_supports_multiple_lookbacks() -> None:
     assert {row["lookback_bars"] for row in segments} == {40, 60}
 
 
-def test_experiment_defaults_to_single_60_bar_production_window() -> None:
-    df = _frame(4.0 + 0.005 * np.arange(80))
-
-    summaries, segments = compute_adaptive_trend_experiment("TEST", df, {})
-
-    assert [row["lookback_bars"] for row in summaries] == [60]
-    assert {row["lookback_bars"] for row in segments} == {60}
-    assert summaries[0]["max_segments"] == 5
+def test_snapshots_default_to_single_250_bar_production_window() -> None:
+    assert DEFAULT_LOOKBACKS == (250,)
 
 
 def test_recommended_max_segments_and_candidate_counts() -> None:
@@ -171,7 +166,7 @@ def test_recommended_max_segments_and_candidate_counts() -> None:
 def test_experiment_uses_capped_recommendation_when_fixed_max_is_absent() -> None:
     df = _frame(4.0 + 0.005 * np.arange(80))
 
-    summaries, _ = compute_adaptive_trend_experiment(
+    summaries, _ = compute_adaptive_segmentation_snapshots(
         "TEST",
         df,
         {"lookbacks": [40, 60], "min_segment_bars": 5, "max_segments_cap": 10},

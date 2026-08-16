@@ -49,7 +49,7 @@ def _summary(lookback: int = 40) -> dict[str, Any]:
         "search_config": {"exhaustive_batch_size": 2048},
         "search_diagnostics": [],
         "method": "continuous_piecewise_log_linear_deterministic_hybrid_bic",
-        "calculation_version": "adaptive_trend_v3",
+        "calculation_version": "adaptive_segmentation_v3",
     }
 
 
@@ -77,7 +77,7 @@ def _segment() -> dict[str, Any]:
         "largest_move_bar_index": 9,
         "largest_move_path_share": 0.2,
         "method": "continuous_piecewise_log_linear_deterministic_hybrid_bic",
-        "calculation_version": "adaptive_trend_v3",
+        "calculation_version": "adaptive_segmentation_v3",
     }
 
 

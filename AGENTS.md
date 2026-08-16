@@ -61,7 +61,9 @@ market_analysis/
 │   ├── indicators/
 │   │   ├── support_resistance.py     # 支撑/阻力指标计算
 │   │   ├── trend.py                  # 趋势指标计算
-│   │   ├── adaptive_trend.py         # 自适应分段实验（纯计算）
+│   │   ├── adaptive_segmentation.py  # 自适应初分段（纯计算）
+│   │   ├── adaptive_trend.py         # 旧模块名兼容入口
+│   │   ├── pivot_segmentation.py     # close Pivot 精炼分段（纯计算）
 │   │   ├── trend_pattern.py          # 长窗口趋势形态分类与质量统计
 │   │   ├── trend_pattern_v4_legs.py  # v4 effective-leg 提取与索引保留
 │   │   ├── trend_pattern_v4_structure.py # v4 方向无关结构分类
@@ -69,7 +71,8 @@ market_analysis/
 │   │   └── sector_heat.py            # 板块热度指标计算
 │   ├── pipeline/
 │   │   ├── run_indicators.py         # 每日 symbol 级指标批量执行
-│   │   ├── run_adaptive_trend_experiment.py # 独立自适应分段实验
+│   │   ├── run_adaptive_segmentation.py # 独立自适应初分段
+│   │   ├── run_pivot_segmentation.py # Pivot 精炼分段快照
 │   │   ├── run_trend_patterns.py     # 基于已持久化分段的形态分类
 │   │   ├── run_trend_pattern_v4.py   # v4 结构与路径指标快照
 │   │   └── run_sector_heat.py        # 每日板块热度批量执行
@@ -96,6 +99,8 @@ market_analysis/
 - `trend_daily`：趋势快照，每 `symbol/date/window_label` 一行。
 - `trend_segmentation_daily`：自适应分段模型选择摘要，每 `symbol/date/lookback_bars` 一行。
 - `trend_segment_daily`：自适应分段明细，每 `symbol/date/lookback_bars/segment_index` 一行。
+- `pivot_segmentation_daily`：Pivot 精炼分段摘要，每 `symbol/date/lookback_bars` 一行。
+- `pivot_segment_daily`：Pivot 精炼分段及终点节点，每 `symbol/date/lookback_bars/segment_index` 一行。
 - `trend_pattern_daily`：长窗口形态分类，每 `symbol/date/lookback_bars` 一行。
 - `trend_pattern_v4_daily`：v4 结构与 close-path 指标，每 `symbol/date/lookback_bars` 一行。
 - `sector_heat_daily`：板块热度快照，每 `universe_ticker/date` 一行。
@@ -178,13 +183,13 @@ CREATE INDEX IF NOT EXISTS trend_daily_symbol_date_idx
 `log_slope_per_bar`、`linearity_r2`、拟合/实际 log return、日度实现波动率、
 波动率调整趋势、路径效率和斜率稳定性字段使用 `fixed_trend_v2` 口径。
 
-### 自适应趋势分段实验表
+### 自适应初分段与 Pivot 精炼分段表
 
-`trend_segmentation_daily` 当前保存 60 bar 生产窗口的分段数、RSS、BIC 与模型参数；
+`trend_segmentation_daily` 当前保存默认 250 bar 生产窗口的分段数、RSS、BIC 与模型参数；
 `trend_segment_daily` 保存每一段的日期边界、bar 索引、log slope、R²、return、波动率、
 波动率调整趋势、路径效率，以及最大单日 log return、发生日期/bar 索引和绝对路径占比。
 算法对合法断点组合执行全局连续分段最小二乘，拟合路径在断点处连续但不强制经过实际
-端点；当前口径为 `adaptive_trend_v3`，方法为
+端点；当前口径为 `adaptive_segmentation_v3`，方法为
 `continuous_piecewise_log_linear_deterministic_hybrid_bic`。候选数不超过预算时执行分批
 精确穷举，超预算时执行确定性 beam + 单断点全域优化 + 相邻双断点局部优化，并在 summary
 中记录 exact/approximate、全局最优保证、候选数、收敛和搜索审计信息。分段继续使用
@@ -192,6 +197,12 @@ CREATE INDEX IF NOT EXISTS trend_daily_symbol_date_idx
 包含 `start - 1 -> start` 的进入收益，因此各段实际 log return 之和等于整个窗口实际
 log return。BIC 复杂度惩罚乘数由 `bic_penalty_multiplier` 配置，默认 3.0，并随摘要
 持久化。实验由独立 CLI 触发，不属于 `run-indicators` 固定窗口流程。
+
+`pivot_segmentation_daily` 保存 `pivot_refined_segmentation_v2` 窗口摘要与源分段版本；
+`pivot_segment_daily` 保存固定 close pivot 后重新连续拟合的分段指标。内部 pivot 作为左侧
+segment 的终点保存，`end_point_type` 为 `high/low`；末段为 `window_end`。Pivot 只在 seed
+左右各 5 bars 的 close 中搜索，不读取 OHLC 极值。数据归属继续使用 `[start, end)`，共享
+pivot 的端点索引另存，避免边界语义混淆。
 
 ### trend_pattern_daily
 
@@ -283,8 +294,11 @@ market-analysis run-strategies
 # 计算板块热度，写入 sector_heat_daily
 market-analysis run-sector-heat
 
-# 运行自适应趋势分段实验，写入两张独立分段表
-market-analysis run-trend-segmentation-experiment
+# 运行自适应初分段，写入 trend_segmentation_daily + trend_segment_daily
+market-analysis run-adaptive-segmentation
+
+# 基于已持久化初分段执行 close Pivot 精炼
+market-analysis run-pivot-segmentation
 
 # 基于最新分段快照计算长窗口形态
 market-analysis run-trend-pattern-analysis
@@ -354,8 +368,8 @@ cron 建议顺序：
 
 - 数据库表、字段、索引、主键、唯一约束。
 - `support_resistance_daily`、`trend_daily`、`trend_segmentation_daily`、
-  `trend_segment_daily`、`trend_pattern_daily`、`trend_pattern_v4_daily`、
-  `sector_heat_daily` 的字段含义。
+  `trend_segment_daily`、`pivot_segmentation_daily`、`pivot_segment_daily`、
+  `trend_pattern_daily`、`trend_pattern_v4_daily`、`sector_heat_daily` 的字段含义。
 - `queries.py` 中供下游使用的返回列、列名、排序、空值语义。
 - CLI 命令名称或输出格式。
 - 下游可能依赖的配置键、参数默认值或数据语义。
