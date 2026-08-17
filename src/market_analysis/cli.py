@@ -64,7 +64,26 @@ def run_sector_heat() -> None:
 
 
 @app.command("run-adaptive-segmentation")
-def run_adaptive_segmentation() -> None:
+def run_adaptive_segmentation(
+    target_date: str | None = typer.Option(
+        None,
+        "--date",
+        "-d",
+        help="Optional snapshot cutoff date (YYYY-MM-DD); otherwise use all market data.",
+    ),
+    lookback: int | None = typer.Option(
+        None,
+        "--lookback",
+        min=40,
+        max=500,
+        help="Requested lookback bars; defaults to the configured lookbacks.",
+    ),
+    force: bool = typer.Option(
+        False,
+        "--force",
+        help="Recompute snapshots even when persisted parameters and segments match.",
+    ),
+) -> None:
     """Persist the canonical adaptive segmentation snapshot."""
     from market_analysis.db.schema import init_schema
     from market_analysis.pipeline.run_adaptive_segmentation import (
@@ -72,7 +91,13 @@ def run_adaptive_segmentation() -> None:
     )
 
     init_schema()
-    total = run_adaptive_segmentation_pipeline(show_progress=True)
+    parsed_date = None if target_date is None else date.fromisoformat(target_date)
+    total = run_adaptive_segmentation_pipeline(
+        parsed_date,
+        lookback_bars=lookback,
+        force_recompute=force,
+        show_progress=True,
+    )
     typer.echo(f"Done. {total} symbols written to adaptive segmentation tables.")
 
 
@@ -173,7 +198,7 @@ def validate_adaptive_segmentation(
 @app.command("run-trend-segmentation-experiment", hidden=True)
 def run_trend_segmentation_experiment_legacy() -> None:
     """Compatibility alias for run-adaptive-segmentation."""
-    run_adaptive_segmentation()
+    run_adaptive_segmentation(target_date=None, lookback=None, force=False)
 
 
 @app.command("compute-adaptive-trend", hidden=True)

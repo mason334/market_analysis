@@ -35,9 +35,6 @@ def run_pivot_segmentation_pipeline(
         settings.indicators.get("adaptive_segmentation", {})
     )
     pivot_params: dict[str, Any] = dict(settings.indicators.get("pivot_refinement", {}))
-    configured_lookbacks = {
-        int(value) for value in adaptive_params.get("lookbacks", [250])
-    }
     classification_params = dict(adaptive_params.get("segment_classification", {}))
     source = str(settings.pipeline.get("source", "tiingo"))
 
@@ -45,7 +42,6 @@ def run_pivot_segmentation_pipeline(
         row
         for row in fetch_trend_segmentation_snapshot(snapshot_date)
         if row.get("calculation_version") == _SOURCE_CALCULATION_VERSION
-        and int(row["lookback_bars"]) in configured_lookbacks
     ]
     if not summaries:
         raise ValueError(
@@ -57,12 +53,15 @@ def run_pivot_segmentation_pipeline(
             continue
         key = (str(row["symbol"]), int(row["lookback_bars"]))
         segments_by_key[key].append(row)
+    summaries_by_symbol: dict[str, list[dict[str, Any]]] = defaultdict(list)
+    for row in summaries:
+        summaries_by_symbol[str(row["symbol"])].append(row)
 
     log.info(
         "pivot_segmentation.start",
         date=str(snapshot_date),
         summaries=len(summaries),
-        lookbacks=sorted(configured_lookbacks),
+        lookbacks=sorted({int(row["lookback_bars"]) for row in summaries}),
     )
     progress = (
         Progress(
@@ -81,53 +80,138 @@ def run_pivot_segmentation_pipeline(
         else None
     )
 
-    completed = 0
+    snapshots_written = 0
+    symbols_completed = 0
+    symbols_failed = 0
+    lookbacks_failed = 0
+    snapshots_discarded = 0
     if progress is not None:
         progress.start()
     try:
-        for source_summary in summaries:
-            symbol = str(source_summary["symbol"])
-            lookback_bars = int(source_summary["lookback_bars"])
-            if progress is not None and progress_task is not None:
-                progress.update(
-                    progress_task,
-                    description=f"Pivot segmentation: {symbol} ({lookback_bars} bars)",
-                )
-            source_segments = segments_by_key.get((symbol, lookback_bars), [])
+        for symbol, symbol_summaries in summaries_by_symbol.items():
+            ordered_summaries = sorted(
+                symbol_summaries,
+                key=lambda row: int(row["lookback_bars"]),
+            )
+            lookbacks = [int(row["lookback_bars"]) for row in ordered_summaries]
             try:
                 frame = fetch_ohlcv(symbol, source=source)
                 if not frame.empty:
                     frame = frame[frame.index.date <= snapshot_date]
-                summary, segments = compute_pivot_segmentation(
-                    symbol,
-                    frame,
-                    source_summary,
-                    source_segments,
-                    search_radius_bars=int(pivot_params.get("search_radius_bars", 5)),
-                    min_segment_bars=int(pivot_params.get("min_segment_bars", 5)),
-                    classification_params=classification_params,
-                )
-                upsert_pivot_segmentation_daily([summary], segments)
             except Exception:
+                symbols_failed += 1
+                lookbacks_failed += len(ordered_summaries)
                 log.exception(
                     "pivot_segmentation.symbol.error",
                     symbol=symbol,
-                    lookback_bars=lookback_bars,
+                    lookbacks=lookbacks,
+                    stage="fetch_ohlcv",
+                )
+                if progress is not None and progress_task is not None:
+                    for _ in ordered_summaries:
+                        progress.advance(progress_task)
+                continue
+
+            computed_summaries: list[dict[str, Any]] = []
+            computed_segments: list[dict[str, Any]] = []
+            failed_lookback: int | None = None
+            for source_summary in ordered_summaries:
+                lookback_bars = int(source_summary["lookback_bars"])
+                if progress is not None and progress_task is not None:
+                    progress.update(
+                        progress_task,
+                        description=(
+                            f"Pivot segmentation: {symbol} ({lookback_bars} bars)"
+                        ),
+                    )
+                source_segments = segments_by_key.get((symbol, lookback_bars), [])
+                try:
+                    summary, segments = compute_pivot_segmentation(
+                        symbol,
+                        frame,
+                        source_summary,
+                        source_segments,
+                        search_radius_bars=int(
+                            pivot_params.get("search_radius_bars", 5)
+                        ),
+                        min_segment_bars=int(pivot_params.get("min_segment_bars", 5)),
+                        classification_params=classification_params,
+                    )
+                except Exception:
+                    failed_lookback = lookback_bars
+                    lookbacks_failed += 1
+                    log.exception(
+                        "pivot_segmentation.lookback.error",
+                        symbol=symbol,
+                        lookback_bars=lookback_bars,
+                    )
+                else:
+                    computed_summaries.append(summary)
+                    computed_segments.extend(segments)
+                    log.info(
+                        "pivot_segmentation.lookback.computed",
+                        symbol=symbol,
+                        lookback_bars=lookback_bars,
+                        pivots=summary["pivot_count"],
+                        segments=summary["segment_count"],
+                    )
+                finally:
+                    if progress is not None and progress_task is not None:
+                        progress.advance(progress_task)
+                if failed_lookback is not None:
+                    break
+
+            if failed_lookback is not None:
+                symbols_failed += 1
+                snapshots_discarded += len(computed_summaries)
+                unprocessed_count = len(ordered_summaries) - len(computed_summaries) - 1
+                if progress is not None and progress_task is not None:
+                    for _ in range(unprocessed_count):
+                        progress.advance(progress_task)
+                log.warning(
+                    "pivot_segmentation.symbol.discarded",
+                    symbol=symbol,
+                    failed_lookback=failed_lookback,
+                    computed_lookbacks=[
+                        int(row["lookback_bars"]) for row in computed_summaries
+                    ],
                 )
                 continue
-            finally:
-                if progress is not None and progress_task is not None:
-                    progress.advance(progress_task)
-            completed += 1
+
+            try:
+                upsert_pivot_segmentation_daily(
+                    computed_summaries,
+                    computed_segments,
+                )
+            except Exception:
+                symbols_failed += 1
+                snapshots_discarded += len(computed_summaries)
+                log.exception(
+                    "pivot_segmentation.symbol.error",
+                    symbol=symbol,
+                    lookbacks=lookbacks,
+                    stage="upsert",
+                )
+                continue
+
+            symbols_completed += 1
+            snapshots_written += len(computed_summaries)
             log.info(
                 "pivot_segmentation.symbol.done",
                 symbol=symbol,
-                lookback_bars=lookback_bars,
-                pivots=summary["pivot_count"],
-                segments=summary["segment_count"],
+                lookbacks=lookbacks,
+                snapshots=len(computed_summaries),
+                segments=len(computed_segments),
             )
     finally:
         if progress is not None:
             progress.stop()
-    log.info("pivot_segmentation.done", snapshots_completed=completed)
-    return completed
+    log.info(
+        "pivot_segmentation.done",
+        symbols_completed=symbols_completed,
+        symbols_failed=symbols_failed,
+        snapshots_written=snapshots_written,
+        lookbacks_failed=lookbacks_failed,
+        snapshots_discarded=snapshots_discarded,
+    )
+    return snapshots_written

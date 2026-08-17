@@ -46,6 +46,41 @@ WHERE symbol = %s
 ORDER BY date
 """
 
+_FETCH_ADAPTIVE_INPUT_METADATA = """
+WITH requested(symbol) AS (
+    SELECT UNNEST(%s::text[])
+)
+SELECT requested.symbol,
+       MAX(recent.date) AS latest_date,
+       COUNT(recent.date) AS available_bars
+FROM requested
+LEFT JOIN LATERAL (
+    SELECT date
+    FROM daily_bars_split_adjusted
+    WHERE symbol = requested.symbol
+      AND source = %s
+      AND (%s::date IS NULL OR date <= %s)
+    ORDER BY date DESC
+    LIMIT %s
+) AS recent ON TRUE
+GROUP BY requested.symbol
+ORDER BY requested.symbol
+"""
+
+_FETCH_ADAPTIVE_CLOSE_WINDOW = """
+SELECT date, close
+FROM (
+    SELECT date, close
+    FROM daily_bars_split_adjusted
+    WHERE symbol = %s
+      AND source = %s
+      AND (%s::date IS NULL OR date <= %s)
+    ORDER BY date DESC
+    LIMIT %s
+) AS recent
+ORDER BY date
+"""
+
 _FETCH_SPLIT_ADJUSTED_CLOSE_WINDOW = """
 SELECT date, close
 FROM (
@@ -122,7 +157,7 @@ WHERE symbol = %s
 
 _UPSERT_TREND_SEGMENTATION_DAILY = """
 INSERT INTO trend_segmentation_daily (
-    symbol, date, lookback_bars, observation_count,
+    symbol, date, requested_lookback_bars, lookback_bars, observation_count,
     segment_count, change_point_count,
     selected_rss, single_segment_rss, selected_bic, single_segment_bic,
     bic_improvement, min_segment_bars, max_segments, bic_penalty_multiplier,
@@ -132,9 +167,10 @@ INSERT INTO trend_segmentation_daily (
 )
 VALUES (
     %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s,
-    %s, %s, %s, %s, %s, %s, %s, %s
+    %s, %s, %s, %s, %s, %s, %s, %s, %s
 )
 ON CONFLICT (symbol, date, lookback_bars) DO UPDATE SET
+    requested_lookback_bars = EXCLUDED.requested_lookback_bars,
     observation_count   = EXCLUDED.observation_count,
     segment_count       = EXCLUDED.segment_count,
     change_point_count  = EXCLUDED.change_point_count,
@@ -209,7 +245,8 @@ WHERE symbol = %s AND date = %s AND NOT (lookback_bars = ANY(%s))
 """
 
 _TREND_SEGMENTATION_COLS = [
-    "symbol", "date", "lookback_bars", "observation_count",
+    "symbol", "date", "requested_lookback_bars", "lookback_bars",
+    "observation_count",
     "segment_count", "change_point_count", "selected_rss", "single_segment_rss",
     "selected_bic", "single_segment_bic", "bic_improvement", "min_segment_bars",
     "max_segments", "bic_penalty_multiplier", "search_mode", "is_global_optimum",
@@ -236,7 +273,7 @@ WHERE calculation_version = %s
 """
 
 _FETCH_TREND_SEGMENTATION_SNAPSHOT = """
-SELECT symbol, date, lookback_bars, observation_count,
+SELECT symbol, date, requested_lookback_bars, lookback_bars, observation_count,
        segment_count, change_point_count, selected_rss, single_segment_rss,
        selected_bic, single_segment_bic, bic_improvement, min_segment_bars,
        max_segments, bic_penalty_multiplier,
@@ -260,17 +297,78 @@ WHERE date = %s
 ORDER BY symbol, lookback_bars, segment_index
 """
 
+_FETCH_ADAPTIVE_RESUME_CANDIDATES = """
+WITH latest AS (
+    SELECT DISTINCT ON (summary.symbol, summary.requested_lookback_bars)
+           summary.symbol, summary.date, summary.requested_lookback_bars,
+           summary.lookback_bars, summary.observation_count,
+           summary.segment_count, summary.min_segment_bars,
+           summary.max_segments, summary.bic_penalty_multiplier,
+           summary.search_config, summary.method, summary.calculation_version
+    FROM trend_segmentation_daily AS summary
+    WHERE summary.symbol = ANY(%s)
+      AND summary.requested_lookback_bars = ANY(%s)
+      AND summary.calculation_version = %s
+      AND (%s::date IS NULL OR summary.date <= %s)
+    ORDER BY summary.symbol, summary.requested_lookback_bars,
+             summary.date DESC, summary.lookback_bars DESC
+)
+SELECT latest.symbol, latest.date, latest.requested_lookback_bars,
+       latest.lookback_bars, latest.observation_count,
+       latest.segment_count, latest.min_segment_bars,
+       latest.max_segments, latest.bic_penalty_multiplier,
+       latest.search_config, latest.method, latest.calculation_version,
+       COUNT(segment.segment_index) AS persisted_segment_count,
+       MIN(segment.segment_index) AS min_segment_index,
+       MAX(segment.segment_index) AS max_segment_index,
+       BOOL_AND(
+           segment.method = latest.method
+           AND segment.calculation_version = latest.calculation_version
+       ) AS segment_identity_matches
+FROM latest
+LEFT JOIN trend_segment_daily AS segment
+  ON segment.symbol = latest.symbol
+ AND segment.date = latest.date
+ AND segment.lookback_bars = latest.lookback_bars
+GROUP BY latest.symbol, latest.date, latest.requested_lookback_bars,
+         latest.lookback_bars, latest.observation_count,
+         latest.segment_count, latest.min_segment_bars,
+         latest.max_segments, latest.bic_penalty_multiplier,
+         latest.search_config, latest.method, latest.calculation_version
+ORDER BY latest.symbol, latest.requested_lookback_bars
+"""
+
+_ADAPTIVE_RESUME_CANDIDATE_COLS = [
+    "symbol",
+    "date",
+    "requested_lookback_bars",
+    "lookback_bars",
+    "observation_count",
+    "segment_count",
+    "min_segment_bars",
+    "max_segments",
+    "bic_penalty_multiplier",
+    "search_config",
+    "method",
+    "calculation_version",
+    "persisted_segment_count",
+    "min_segment_index",
+    "max_segment_index",
+    "segment_identity_matches",
+]
+
 _UPSERT_PIVOT_SEGMENTATION_DAILY = """
 INSERT INTO pivot_segmentation_daily (
-    symbol, date, lookback_bars, observation_count,
+    symbol, date, requested_lookback_bars, lookback_bars, observation_count,
     pivot_count, segment_count, fit_rss,
     search_radius_bars, min_segment_bars,
     classification_config, resolution_diagnostics,
     source_segmentation_method, source_segmentation_calculation_version,
     method, calculation_version
 )
-VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
 ON CONFLICT (symbol, date, lookback_bars) DO UPDATE SET
+    requested_lookback_bars                 = EXCLUDED.requested_lookback_bars,
     observation_count                       = EXCLUDED.observation_count,
     pivot_count                             = EXCLUDED.pivot_count,
     segment_count                           = EXCLUDED.segment_count,
@@ -366,7 +464,7 @@ WHERE calculation_version = 'pivot_refined_segmentation_v2'
 """
 
 _FETCH_PIVOT_SEGMENTATION_SNAPSHOT = """
-SELECT symbol, date, lookback_bars, observation_count,
+SELECT symbol, date, requested_lookback_bars, lookback_bars, observation_count,
        pivot_count, segment_count, fit_rss,
        search_radius_bars, min_segment_bars,
        classification_config, resolution_diagnostics,
@@ -378,7 +476,8 @@ ORDER BY symbol, lookback_bars
 """
 
 _PIVOT_SEGMENTATION_COLS = [
-    "symbol", "date", "lookback_bars", "observation_count", "pivot_count",
+    "symbol", "date", "requested_lookback_bars", "lookback_bars",
+    "observation_count", "pivot_count",
     "segment_count", "fit_rss", "search_radius_bars", "min_segment_bars",
     "classification_config", "resolution_diagnostics", "source_segmentation_method",
     "source_segmentation_calculation_version", "method", "calculation_version",
@@ -629,6 +728,49 @@ def fetch_ohlcv(symbol: str, source: str = "") -> pd.DataFrame:
     return df.set_index("date").sort_index()
 
 
+def fetch_adaptive_input_metadata(
+    symbols: list[str],
+    *,
+    source: str,
+    target_date: date | None,
+    max_lookback_bars: int,
+) -> dict[str, tuple[date | None, int]]:
+    """Read only the latest date and capped available-bar count for each symbol."""
+    if not symbols:
+        return {}
+    with get_source_conn() as conn:
+        rows = conn.execute(
+            _FETCH_ADAPTIVE_INPUT_METADATA,
+            (symbols, source, target_date, target_date, max_lookback_bars),
+        ).fetchall()
+    return {
+        str(symbol): (latest_date, int(available_bars))
+        for symbol, latest_date, available_bars in rows
+    }
+
+
+def fetch_adaptive_close_window(
+    symbol: str,
+    *,
+    source: str,
+    target_date: date | None,
+    observation_count: int,
+) -> pd.DataFrame:
+    """Read the exact capped close window required by adaptive segmentation."""
+    if observation_count <= 0:
+        return pd.DataFrame(columns=["close"])
+    with get_source_conn() as conn:
+        rows = conn.execute(
+            _FETCH_ADAPTIVE_CLOSE_WINDOW,
+            (symbol, source, target_date, target_date, observation_count),
+        ).fetchall()
+    if not rows:
+        return pd.DataFrame(columns=["close"])
+    frame = pd.DataFrame(rows, columns=["date", "close"])
+    frame["date"] = pd.to_datetime(frame["date"])
+    return frame.set_index("date").sort_index()
+
+
 def fetch_split_adjusted_close_window(
     symbol: str,
     target_date: date,
@@ -763,6 +905,7 @@ def upsert_trend_segmentation_daily(
                 (
                     symbol,
                     snapshot_date,
+                    row.get("requested_lookback_bars", lookback_bars),
                     lookback_bars,
                     row["observation_count"],
                     row["segment_count"],
@@ -845,6 +988,33 @@ def fetch_trend_segment_snapshot(target_date: date) -> list[dict[str, Any]]:
     return [dict(zip(_TREND_SEGMENT_COLS, row)) for row in rows]
 
 
+def fetch_adaptive_resume_candidates(
+    symbols: list[str],
+    requested_lookbacks: list[int],
+    *,
+    target_date: date | None,
+    calculation_version: str,
+) -> list[dict[str, Any]]:
+    """Return latest resumable summaries plus persisted segment integrity metadata."""
+    if not symbols or not requested_lookbacks:
+        return []
+    with get_conn() as conn:
+        rows = conn.execute(
+            _FETCH_ADAPTIVE_RESUME_CANDIDATES,
+            (
+                symbols,
+                requested_lookbacks,
+                calculation_version,
+                target_date,
+                target_date,
+            ),
+        ).fetchall()
+    return [
+        dict(zip(_ADAPTIVE_RESUME_CANDIDATE_COLS, row, strict=True))
+        for row in rows
+    ]
+
+
 def upsert_pivot_segmentation_daily(
     summaries: list[dict[str, Any]],
     segments: list[dict[str, Any]],
@@ -910,6 +1080,7 @@ def upsert_pivot_segmentation_daily(
                 (
                     symbol,
                     snapshot_date,
+                    row.get("requested_lookback_bars", lookback_bars),
                     lookback_bars,
                     row["observation_count"],
                     row["pivot_count"],

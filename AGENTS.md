@@ -185,7 +185,10 @@ CREATE INDEX IF NOT EXISTS trend_daily_symbol_date_idx
 
 ### 自适应初分段与 Pivot 精炼分段表
 
-`trend_segmentation_daily` 当前保存默认 250 bar 生产窗口的分段数、RSS、BIC 与模型参数；
+`trend_segmentation_daily` 当前保存目标 250 bar 生产窗口的分段数、RSS、BIC 与模型参数；标的历史
+不足 250 但至少 40 bars 时保存实际可用窗口，少于 40 bars 时跳过；
+summary 使用 `requested_lookback_bars` 保存配置目标，使用 `lookback_bars` 和
+`observation_count` 保存实际窗口；例如目标 250、实际 65 时保存 `250/65/65`。
 `trend_segment_daily` 保存每一段的日期边界、bar 索引、log slope、R²、return、波动率、
 波动率调整趋势、路径效率，以及最大单日 log return、发生日期/bar 索引和绝对路径占比。
 算法对合法断点组合执行全局连续分段最小二乘，拟合路径在断点处连续但不强制经过实际
@@ -198,11 +201,14 @@ CREATE INDEX IF NOT EXISTS trend_daily_symbol_date_idx
 log return。BIC 复杂度惩罚乘数由 `bic_penalty_multiplier` 配置，默认 3.0，并随摘要
 持久化。实验由独立 CLI 触发，不属于 `run-indicators` 固定窗口流程。
 
-`pivot_segmentation_daily` 保存 `pivot_refined_segmentation_v2` 窗口摘要与源分段版本；
+`pivot_segmentation_daily` 保存 `pivot_refined_segmentation_v2` 窗口摘要与源分段版本，并从初分段
+summary 继承 `requested_lookback_bars`；
 `pivot_segment_daily` 保存固定 close pivot 后重新连续拟合的分段指标。内部 pivot 作为左侧
 segment 的终点保存，`end_point_type` 为 `high/low`；末段为 `window_end`。Pivot 只在 seed
 左右各 5 bars 的 close 中搜索，不读取 OHLC 极值。数据归属继续使用 `[start, end)`，共享
 pivot 的端点索引另存，避免边界语义混淆。
+批处理按 symbol 聚合同一日期的全部 `lookback_bars`，复用一次 OHLCV 读取；该 symbol 的所有窗口
+均成功后才一次性 upsert。任一窗口失败则该 symbol 本轮整体不写入，其他 symbol 继续处理。
 
 ### trend_pattern_daily
 

@@ -87,6 +87,7 @@ _CREATE_TREND_SEGMENTATION_DAILY = """
 CREATE TABLE IF NOT EXISTS trend_segmentation_daily (
     symbol                    TEXT NOT NULL,
     date                      DATE NOT NULL,
+    requested_lookback_bars   INT  NOT NULL,
     lookback_bars             INT  NOT NULL,
     observation_count         INT  NOT NULL,
     segment_count             INT  NOT NULL,
@@ -107,7 +108,9 @@ CREATE TABLE IF NOT EXISTS trend_segmentation_daily (
     search_diagnostics        JSONB NOT NULL DEFAULT '[]'::jsonb,
     method                    TEXT NOT NULL,
     calculation_version       TEXT NOT NULL,
-    PRIMARY KEY (symbol, date, lookback_bars)
+    PRIMARY KEY (symbol, date, lookback_bars),
+    CONSTRAINT trend_segmentation_requested_lookback_check
+        CHECK (requested_lookback_bars >= lookback_bars)
 );
 """
 
@@ -126,6 +129,30 @@ ALTER TABLE trend_segmentation_daily
     ADD COLUMN IF NOT EXISTS search_config JSONB NOT NULL DEFAULT '{}'::jsonb;
 ALTER TABLE trend_segmentation_daily
     ADD COLUMN IF NOT EXISTS search_diagnostics JSONB NOT NULL DEFAULT '[]'::jsonb;
+ALTER TABLE trend_segmentation_daily
+    ADD COLUMN IF NOT EXISTS requested_lookback_bars INT;
+UPDATE trend_segmentation_daily
+    SET requested_lookback_bars = lookback_bars
+    WHERE requested_lookback_bars IS NULL;
+ALTER TABLE trend_segmentation_daily
+    ALTER COLUMN requested_lookback_bars SET NOT NULL;
+"""
+
+_ENSURE_TREND_SEGMENTATION_REQUESTED_LOOKBACK_CHECK = """
+DO $$
+BEGIN
+    IF NOT EXISTS (
+        SELECT 1
+        FROM pg_constraint
+        WHERE conname = 'trend_segmentation_requested_lookback_check'
+          AND conrelid = 'trend_segmentation_daily'::regclass
+    ) THEN
+        ALTER TABLE trend_segmentation_daily
+            ADD CONSTRAINT trend_segmentation_requested_lookback_check
+            CHECK (requested_lookback_bars >= lookback_bars);
+    END IF;
+END
+$$
 """
 
 _CREATE_TREND_SEGMENTATION_DAILY_IDX = """
@@ -184,6 +211,7 @@ _CREATE_PIVOT_SEGMENTATION_DAILY = """
 CREATE TABLE IF NOT EXISTS pivot_segmentation_daily (
     symbol                                  TEXT  NOT NULL,
     date                                    DATE  NOT NULL,
+    requested_lookback_bars                 INT   NOT NULL,
     lookback_bars                           INT   NOT NULL,
     observation_count                       INT   NOT NULL,
     pivot_count                             INT   NOT NULL,
@@ -198,6 +226,8 @@ CREATE TABLE IF NOT EXISTS pivot_segmentation_daily (
     method                                  TEXT  NOT NULL,
     calculation_version                     TEXT  NOT NULL,
     PRIMARY KEY (symbol, date, lookback_bars),
+    CONSTRAINT pivot_segmentation_requested_lookback_check
+        CHECK (requested_lookback_bars >= lookback_bars),
     CHECK (lookback_bars >= 2),
     CHECK (observation_count = lookback_bars),
     CHECK (pivot_count >= 0),
@@ -205,6 +235,33 @@ CREATE TABLE IF NOT EXISTS pivot_segmentation_daily (
     CHECK (search_radius_bars >= 0),
     CHECK (min_segment_bars >= 2)
 );
+"""
+
+_ALTER_PIVOT_SEGMENTATION_DAILY = """
+ALTER TABLE pivot_segmentation_daily
+    ADD COLUMN IF NOT EXISTS requested_lookback_bars INT;
+UPDATE pivot_segmentation_daily
+    SET requested_lookback_bars = lookback_bars
+    WHERE requested_lookback_bars IS NULL;
+ALTER TABLE pivot_segmentation_daily
+    ALTER COLUMN requested_lookback_bars SET NOT NULL;
+"""
+
+_ENSURE_PIVOT_SEGMENTATION_REQUESTED_LOOKBACK_CHECK = """
+DO $$
+BEGIN
+    IF NOT EXISTS (
+        SELECT 1
+        FROM pg_constraint
+        WHERE conname = 'pivot_segmentation_requested_lookback_check'
+          AND conrelid = 'pivot_segmentation_daily'::regclass
+    ) THEN
+        ALTER TABLE pivot_segmentation_daily
+            ADD CONSTRAINT pivot_segmentation_requested_lookback_check
+            CHECK (requested_lookback_bars >= lookback_bars);
+    END IF;
+END
+$$
 """
 
 _CREATE_PIVOT_SEGMENTATION_DAILY_IDX = """
@@ -403,11 +460,14 @@ def init_schema() -> None:
         _execute_statements(conn, _CREATE_TREND_DAILY_IDX)
         conn.execute(_CREATE_TREND_SEGMENTATION_DAILY)
         _execute_statements(conn, _ALTER_TREND_SEGMENTATION_DAILY)
+        conn.execute(_ENSURE_TREND_SEGMENTATION_REQUESTED_LOOKBACK_CHECK)
         _execute_statements(conn, _CREATE_TREND_SEGMENTATION_DAILY_IDX)
         conn.execute(_CREATE_TREND_SEGMENT_DAILY)
         _execute_statements(conn, _ALTER_TREND_SEGMENT_DAILY)
         _execute_statements(conn, _CREATE_TREND_SEGMENT_DAILY_IDX)
         conn.execute(_CREATE_PIVOT_SEGMENTATION_DAILY)
+        _execute_statements(conn, _ALTER_PIVOT_SEGMENTATION_DAILY)
+        conn.execute(_ENSURE_PIVOT_SEGMENTATION_REQUESTED_LOOKBACK_CHECK)
         _execute_statements(conn, _CREATE_PIVOT_SEGMENTATION_DAILY_IDX)
         conn.execute(_CREATE_PIVOT_SEGMENT_DAILY)
         _execute_statements(conn, _CREATE_PIVOT_SEGMENT_DAILY_IDX)

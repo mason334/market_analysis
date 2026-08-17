@@ -27,7 +27,7 @@
 
 当前 `src/market_analysis/indicators/adaptive_segmentation.py` 已实现：
 
-- 默认只计算 250 bars 生产 lookback；
+- 默认目标为 250 bars；历史不足 250 但至少 40 bars 时按实际可用数量 fallback；
 - 候选数不超过预算时执行分批精确穷举；
 - 超过预算时执行确定性 beam expansion、单断点全域优化和相邻双断点局部优化；
 - 对每组断点执行全局连续分段 log-linear OLS；
@@ -42,6 +42,7 @@
 indicators:
   adaptive_segmentation:
     lookbacks: [250]
+    min_fallback_bars: 40
     min_segment_bars: 5
     max_segments_cap: 10
     bic_penalty_multiplier: 3.0
@@ -64,7 +65,7 @@ indicators:
     min_segment_bars: 5
 ```
 
-250 bars 默认窗口的最大分段数上限为 10，候选空间超过预算时进入
+250 bars 目标窗口的最大分段数上限为 10；fallback 窗口按实际长度重新计算分段数上限。候选空间超过预算时进入
 `hybrid_approximate`。summary 明确保存搜索模式、全局最优保证、实际候选数、refinement
 收敛状态、搜索配置和逐 `K` 诊断。随后 `pivot_segmentation.py` 对初始段分类、合并，只用
 close 在 seed 左右各 5 bars 搜索确定性 pivot，并将连续重拟合结果写入两张独立新表。
@@ -1344,6 +1345,7 @@ v3 已增加以下摘要字段：`search_mode`、`is_global_optimum`、`candidat
 indicators:
   adaptive_segmentation:
     lookbacks: [250]
+    min_fallback_bars: 40
     min_segment_bars: 5
     max_segments_cap: 10
     bic_penalty_multiplier: 3.0
@@ -1357,7 +1359,9 @@ indicators:
     min_segment_bars: 5
 ```
 
-`lookback_bars = 250` 表示窗口包含 250 个 close observations，对应 249 个相邻日度收益间隔。
+`lookbacks: [250]` 表示目标窗口为 250 个 close observations。若标的截止计算日只有 `N` 个有效历史
+rows，则 `N >= 250` 时仍计算 250 bars，`40 <= N < 250` 时使用 `N` bars，`N < 40` 时跳过。
+fallback 结果的 `lookback_bars` 和 `observation_count` 都写入实际值 `N`，不伪装成 250 bars。
 在 250 bars 和较高候选分段数下，现有候选预算会触发确定性混合近似搜索；summary 必须继续准确
 记录 `search_mode`、`is_global_optimum`、候选数、收敛状态和逐分段数诊断，不得把 best found
 标记为已经证明的全局最优。
@@ -1605,10 +1609,11 @@ market-analysis run-pivot-segmentation
 “已处理数”，避免进度条与实际循环位置不一致。
 
 `run-pivot-segmentation` 使用相同的进度展示，并额外显示当前 lookback bars。其处理单位是一个
-`symbol/lookback_bars` 快照；默认只配置 250 bars，因此默认情况下快照数等于 symbol 数。
+`symbol/lookback_bars` 快照；默认目标为 250 bars，但新上市标的可能持久化 40～249 bars 的实际窗口。
 
-`run-pivot-segmentation` 读取已持久化的 `adaptive_segmentation_v3` summary/segments，同时从
-`market_data.daily_bars_split_adjusted` 读取同一 symbol、date 和 250-bars close，不在
+`run-pivot-segmentation` 读取指定日期所有已持久化的 `adaptive_segmentation_v3` summary/segments，
+包括 40～249 bars 的 fallback 快照，同时从 `market_data.daily_bars_split_adjusted` 读取同一
+symbol、date 和实际 `lookback_bars` 数量的 close，不在
 `indicators/` 内连接数据库。
 
 单标的诊断命令为：
@@ -1708,3 +1713,207 @@ market-analysis compute-adaptive-segmentation --symbol AAPL --lookback 250
 - 2026-08-15 验证结果：本方案变更文件 Ruff 通过，完整 pytest 为 `139 passed`；
 - 本次未连接或修改实际 PostgreSQL；部署时需先运行 `market-analysis init-db`，再按第 17.13 节
   顺序生成快照。
+
+## 18. 已实施：自适应分段动态回溯窗口
+
+### 18.1 方案元数据
+
+- **方案名称**：自适应分段动态回溯窗口
+- **方案编号**：`MA-AS-FALLBACK-001`
+- **版本号**：`v1.1.1`
+- **状态**：已实施
+- **确认日期**：2026-08-16
+- **实施日期**：2026-08-16
+
+### 18.2 生产规则
+
+设 `N` 为标的截止计算日的可用日线 rows 数，`L` 为配置的目标 `lookback`，`M` 为
+`min_fallback_bars`，默认值为 40。实际窗口 `L_eff` 按以下规则确定：
+
+```text
+N >= L       -> L_eff = L
+M <= N < L   -> L_eff = N
+N < M        -> skip symbol
+```
+
+`N = 40` 属于可计算边界。多个配置窗口分别解析后按原顺序去重；若多个目标窗口 fallback 到同一个
+实际窗口，则只计算一次，并将最大的目标窗口保存为 `requested_lookback_bars`。fallback 不改变 BIC
+选模或搜索算法，因此计算版本继续使用 `adaptive_segmentation_v3`；summary 中的 `lookback_bars` 与
+`observation_count` 均为实际窗口 `L_eff`。
+
+#### 18.2.1 多目标窗口 fallback 去重契约
+
+多个 `requested_lookback_bars` 映射到同一个实际 `lookback_bars` 时，不生成重复 summary，也不重复
+执行相同的分段计算。实际窗口是结果身份和主键的一部分；相同 symbol、date 和实际窗口只保留一个
+结果。为保留最严格的原始目标，去重后的 `requested_lookback_bars` 取所有来源目标中的最大值。
+
+例如配置 `lookbacks: [250, 200]`，某 symbol 截止计算日只有 65 bars：
+
+```text
+requested 250 -> effective 65
+requested 200 -> effective 65
+deduplicated  -> requested_lookback_bars/lookback_bars/observation_count = 250/65/65
+```
+
+该 symbol/date 只计算一次并只生成一条 `trend_segmentation_daily` summary；不会再生成
+`requested_lookback_bars/lookback_bars = 200/65` 的重复结果。原因是两次计算输入完全相同，且
+`trend_segmentation_daily` 主键 `(symbol, date, lookback_bars)` 将实际窗口而非请求窗口作为结果身份。
+
+若实际窗口不同，则分别计算并持久化。例如配置仍为 `[250, 200]`、实际可用 220 bars 时，生成
+`250/220/220` 与 `200/200/200` 两条 summary。
+
+从 `v1.1.0` 起，`trend_segmentation_daily` 和 `pivot_segmentation_daily` 另存
+`requested_lookback_bars = L`。例如目标窗口 `L = 250`、实际窗口 `L_eff = 65` 时，两张 summary
+表均保存 `requested_lookback_bars/lookback_bars/observation_count = 250/65/65`。Pivot 从对应的
+初分段 summary 继承目标窗口，不重新推断配置。
+
+批处理逐 symbol 输出 `adaptive_segmentation.lookback.fallback` 或
+`adaptive_segmentation.skip.insufficient_bars`，结束事件汇总成功、fallback、历史不足和失败数量。
+Pivot pipeline 按快照日期与计算版本接续所有已持久化窗口，不再把输入限定为配置中的 250 bars。
+
+### 18.3 数据库与下游影响
+
+`v1.1.0` 为两张 summary 表新增非空字段 `requested_lookback_bars`，主键、索引和计算版本不变。
+幂等迁移先增加可空列，将历史行保守回填为 `requested_lookback_bars = lookback_bars`，再设为非空并
+增加 `requested_lookback_bars >= lookback_bars` 检查约束。同一日期不同 symbol 的
+`lookback_bars` 可以不同；`investment_dashboard` 不应硬编码 `lookback_bars = 250`，并应在需要
+展示 fallback 时读取新字段。
+
+版本记录：
+
+- `v1.0.0`：实现目标 250、最低 40 bars 的动态 fallback 和 Pivot 接续。
+- `v1.1.0`：在初分段与 Pivot summary 中增加目标窗口审计字段，实际计算口径不变。
+- `v1.1.1`：补充多个目标窗口 fallback 到同一实际窗口时的去重与最大目标保留契约。
+
+## 19. 已实施：Pivot 多窗口原子持久化
+
+### 19.1 方案元数据
+
+- **方案名称**：Pivot 多窗口原子持久化
+- **方案编号**：`MA-PIVOT-MULTI-LB-001`
+- **版本号**：`v1.0.0`
+- **状态**：已实施
+- **确认日期**：2026-08-16
+- **实施日期**：2026-08-16
+
+### 19.2 问题与原因
+
+旧 pipeline 逐 `symbol/lookback_bars` 计算，并把单条 summary 立即传给支持多窗口替换语义的
+`upsert_pivot_segmentation_daily()`。Upsert 会删除同一 symbol/date 下不在本次 lookback 集合中的
+旧行；由于每次集合只有一个元素，后写入的窗口会删除先写入的窗口。查询按 lookback 升序，因此在
+全部成功时表现为只保留最大窗口，但这不是 Pivot 算法的选择规则。
+
+### 19.3 当前生产契约
+
+Pipeline 先按 symbol 聚合同一快照日期的所有 `adaptive_segmentation_v3` summary。每个 symbol：
+
+1. 只读取一次并按快照日期截断 OHLCV；
+2. 按实际 `lookback_bars` 升序计算所有 Pivot 窗口；
+3. 暂存该 symbol 的全部 Pivot summaries 和 segments；
+4. 所有窗口成功后，调用一次 `upsert_pivot_segmentation_daily()`，在一个事务中替换完整窗口集合；
+5. 任一窗口失败时，丢弃本轮已计算的临时结果，不调用 upsert，保留该 symbol 原有数据库快照；
+6. 一个 symbol 失败不阻止其他 symbol 继续处理。
+
+返回值与 CLI 完成信息继续表示实际写入的 `symbol/lookback_bars` 快照数。进度条仍以输入快照为单位；
+结束日志同时报告成功/失败 symbol、写入快照、失败 lookback 和因原子策略丢弃的已计算快照数量。
+
+该方案仅调整 pipeline 分组和事务粒度，不改变 Pivot 搜索、连续拟合、数据库 schema、主键、索引、
+方法或 `pivot_refined_segmentation_v2` 计算版本。
+
+### 19.4 下游影响
+
+当上游同一 symbol/date 实际存在多个不同 `lookback_bars` 时，Pivot 两张表现在会真实保留全部窗口。
+`investment_dashboard` 若读取多个窗口，必须把 `lookback_bars` 纳入行身份、详情查询和 segment 关联；
+若只展示一个窗口，则查询应显式定义选择规则，不能依赖数据库只剩最后写入窗口的旧副作用。
+
+## 20. 已实施：Pivot 页面参数化行情分析执行
+
+### 20.1 方案元数据
+
+- **方案名称**：Pivot 页面参数化行情分析执行
+- **方案编号**：`MS-ANALYSIS-RUN-01`
+- **版本号**：`v1.0.0`
+- **状态**：已实施
+- **确认日期**：2026-08-16
+- **实施日期**：2026-08-16
+
+### 20.2 CLI 与 pipeline 变更
+
+批量 `run-adaptive-segmentation` 新增两个可选参数：
+
+```powershell
+market-analysis run-adaptive-segmentation --date 2026-08-14 --lookback 250
+```
+
+- `--date/-d` 是行情截止日期；每个 symbol 只使用该日期及以前的行情，非交易日自然落到此前最近的
+  可用交易日。
+- `--lookback` 是本次请求窗口，允许 40～500 bars；它覆盖本次运行的 YAML `lookbacks`，但不改写
+  配置文件。
+- 两个参数均省略时，继续使用全部可用行情和 YAML 中的 `lookbacks`，因此原有定时或手工命令保持
+  向后兼容。
+- pipeline 的 `lookback_bars` 覆盖参数同样执行 40～500 的边界校验，避免绕过 CLI 直接调用时写入
+  非法请求窗口。
+
+`run-pivot-segmentation --date YYYY-MM-DD` 的既有接口不变，继续精炼该日期已经持久化的全部自适应
+窗口。此次不修改分段/Pivot 算法、计算版本、数据库 schema、主键、索引或持久化字段语义。
+
+### 20.3 investment_dashboard 影响
+
+`investment_dashboard` 已同步使用新参数：自适应初分段按钮传入用户选择的截止日期和 lookback；Pivot
+按钮传入从 `trend_segmentation_daily` 的 `adaptive_segmentation_v3` 结果中选择的真实快照日期。
+下游主快照仍固定读取 `requested_lookback_bars = 250`；若用户运行其他请求窗口，该结果会被持久化并
+可执行 Pivot 精炼，但不会自动进入当前 250-bars 主快照。
+
+## 21. 已实施：自适应分段幂等续跑与实时终端输出
+
+### 21.1 方案元数据
+
+- **方案名称**：自适应分段幂等续跑与实时终端输出
+- **方案编号**：`MA-AS-RESUME-001`
+- **版本号**：`v1.1.0`
+- **基线版本**：`v1.0.1`
+- **状态**：已实施
+- **确认日期**：2026-08-16
+- **实施日期**：2026-08-16
+
+### 21.2 幂等续跑规则
+
+`run-adaptive-segmentation` 默认启用续跑。Pipeline 先批量读取每个 symbol 截止目标日期的最新行情日期
+和最多为最大请求窗口的可用 bars 数，再批量读取已有 `trend_segmentation_daily` summary 及其
+`trend_segment_daily` 完整性信息。以下条件全部成立时，直接跳过该 symbol，不读取 close 窗口、不执行
+分段计算、也不写数据库：
+
+- symbol、实际快照日期、`requested_lookback_bars`、实际 `lookback_bars` 和
+  `observation_count` 一致；
+- `min_segment_bars`、实际 `max_segments`、`bic_penalty_multiplier` 和规范化后的完整
+  `search_config` 一致；
+- `method` 和 `calculation_version` 一致；
+- summary 的 `segment_count` 等于持久化 segment 行数，且 segment index 连续覆盖
+  `0..segment_count-1`，segment 方法和版本与 summary 一致。
+
+`segment_count` 只用于验证已有结果完整性，不用于预测本次模型会选择多少段。`min_fallback_bars` 先用于
+决定 symbol 是否满足运行条件，不作为已完成结果的数值参数。原始 CLI 截止日期也不直接比较；非交易日
+若落到相同实际行情日期和窗口，可以复用同一结果。
+
+新增 `--force` 可跳过续跑判断并强制重算。Pipeline 日志增加
+`symbols_skipped_existing/snapshots_skipped_existing`，并逐 symbol 输出
+`adaptive_segmentation.symbol.skip.existing`。本方案不改变分段算法或计算版本。
+
+### 21.3 查询和资源口径
+
+行情元数据使用一次批量只读查询，只扫描每个 symbol 最近最多 `max(requested_lookbacks)` 个日期索引；
+只有缺失、参数不同、结果不完整或使用 `--force` 的 symbol 才读取对应 close 窗口。已有结果查询使用
+summary 日期/窗口索引及 segment 主键完成聚合完整性检查，不新增数据库索引或 schema 字段。
+
+2026-08-16 本机验收：182 个目标 symbol 中，目标日 `2026-08-14` 的 92 个已写入结果全部通过参数和
+完整性匹配，将在续跑时跳过；该验收只执行 SELECT，没有运行分段计算或写数据库。历史 close 若在同一
+日期和长度下被数据源修订，当前表无法仅凭参数识别内容变化，应使用 `--force` 强制重算。
+
+### 21.4 investment_dashboard 影响
+
+Dashboard 已同步增加“强制重新计算已有结果”开关，默认关闭；关闭时使用 CLI 默认续跑，开启时追加
+`--force`。自适应任务使用 3600 秒专用超时并实时展示合并后的 stdout/stderr；Pivot 同样实时展示输出，
+但继续使用 900 秒超时。CLI 名称、数据库表结构和下游快照读取列均未改变。
+
+验证结果：`market_analysis` 完整 pytest 为 `159 passed`，本方案变更文件 Ruff 通过；未执行真实分段
+写入。

@@ -188,7 +188,8 @@ log 口径，不提前乘 100 或舍入；百分比展示由下游转换。
 
 ### 自适应初分段与 Pivot 精炼分段
 
-初分段当前使用单一 250 bar 长窗口，在 log price 上对合法断点组合执行全局连续分段
+初分段当前以 250 bars 为目标长窗口；标的历史不足 250 但至少有 40 bars 时，使用截止计算日的
+全部可用 bars，少于 40 bars 时跳过并输出 warning。在 log price 上对合法断点组合执行全局连续分段
 最小二乘。模型使用 linear-spline hinge basis，允许断点前后斜率变化，但要求拟合路径在
 断点处连续；拟合线不强制经过实际端点。`adaptive_segmentation_v3` 在固定分段数的合法组合不超过
 `exact_candidate_budget` 时执行分批精确穷举，超过预算时使用确定性 beam expansion、单断点
@@ -204,8 +205,13 @@ log 口径，不提前乘 100 或舍入；百分比展示由下游转换。
 - `trend_segment_daily`：每个自适应段的日期边界和段内趋势指标。
 - 方法：`continuous_piecewise_log_linear_deterministic_hybrid_bic`。
 - 版本：`adaptive_segmentation_v3`。
-- 250 bars 固定输出的最大分段数上限为 10；候选空间超过预算时明确标记为近似搜索。
+- 目标窗口 250 bars 的最大分段数上限为 10；fallback 窗口按实际 `lookback_bars` 重新计算上限。
+- `lookback_bars` 与 `observation_count` 均保存实际参与计算的 close observations 数量。
+- 候选空间超过预算时明确标记为近似搜索。
 - summary 显式保存 exact/approximate、全局最优保证、候选评估数、收敛状态和搜索审计信息。
+- `trend_segmentation_daily` 与 `pivot_segmentation_daily` 的 `requested_lookback_bars`
+  保存配置目标窗口；`lookback_bars` 与 `observation_count` 保存实际参与计算的窗口。
+  例如目标 250、实际可用 65 时分别保存 `250/65/65`。
 - 独立分段命令不会修改 `trend_daily`，也不会由 `run-indicators` 自动触发。
 
 `pivot_refined_segmentation_v2` 将初始段分类为 `up/down/flat`、合并相邻同类段，再在每个
@@ -213,6 +219,10 @@ log 口径，不提前乘 100 或舍入；百分比展示由下游转换。
 执行全局连续 log-linear OLS；结果写入 `pivot_segmentation_daily` 与
 `pivot_segment_daily`。内部 pivot 元数据归属于左侧 segment 的终点，末段终点类型为
 `window_end`。
+
+`run-pivot-segmentation` 按 symbol 聚合同一日期的全部实际 lookback，同一 symbol 只读取一次
+OHLCV；所有 lookback 均计算成功后，在单次事务中整体写入。任一 lookback 失败时，该 symbol 本轮
+不更新，避免部分新结果与旧结果混合；其他 symbol 继续处理。
 
 ### 长窗口趋势形态
 
@@ -444,11 +454,20 @@ market-analysis run-indicators
 # 板块热度（所有 universe_ticker -> sector_heat_daily）
 market-analysis run-sector-heat
 
-# 自适应初分段（独立于固定窗口生产流程）
+# 自适应初分段（目标 250 bars；40–249 bars 自动使用实际可用窗口）
 market-analysis run-adaptive-segmentation
+
+# 指定行情截止日期与请求窗口（40–500 bars）
+market-analysis run-adaptive-segmentation --date 2026-08-14 --lookback 250
+
+# 默认跳过同日、同窗口、同算法参数且 segment 明细完整的已有结果；需要重算时显式强制
+market-analysis run-adaptive-segmentation --date 2026-08-14 --lookback 250 --force
 
 # 使用 close pivot 精炼已持久化的初分段
 market-analysis run-pivot-segmentation
+
+# 精炼指定日期已持久化的自适应初分段
+market-analysis run-pivot-segmentation --date 2026-08-14
 
 # 单标的只读计算；输出 dashboard 可解析的 JSON，不写生产表
 market-analysis compute-adaptive-segmentation `

@@ -473,6 +473,9 @@ def compute_pivot_segmentation(
     summary = {
         "symbol": symbol,
         "date": source_date,
+        "requested_lookback_bars": int(
+            source_summary.get("requested_lookback_bars", lookback_bars)
+        ),
         "lookback_bars": lookback_bars,
         "observation_count": lookback_bars,
         "pivot_count": len(selected_pivots),

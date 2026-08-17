@@ -24,6 +24,7 @@ indicators:
 
   adaptive_segmentation:
     lookbacks: [250]
+    min_fallback_bars: 40
     min_segment_bars: 5
     max_segments_cap: 10
     bic_penalty_multiplier: 2.0

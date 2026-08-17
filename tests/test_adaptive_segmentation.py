@@ -30,6 +30,7 @@ def test_single_linear_path_is_not_oversegmented() -> None:
     summary, segments = compute_adaptive_segmentation("TEST", df, 60)
 
     assert summary is not None
+    assert summary["requested_lookback_bars"] == 60
     assert summary["segment_count"] == 1
     assert summary["change_point_count"] == 0
     assert len(segments) == 1
@@ -148,7 +149,23 @@ def test_experiment_supports_multiple_lookbacks() -> None:
     )
 
     assert [row["lookback_bars"] for row in summaries] == [40, 60]
+    assert [row["requested_lookback_bars"] for row in summaries] == [40, 60]
     assert {row["lookback_bars"] for row in segments} == {40, 60}
+
+
+def test_snapshots_preserve_requested_lookback_for_fallback_window() -> None:
+    df = _frame(4.0 + 0.005 * np.arange(65))
+
+    summaries, _ = compute_adaptive_segmentation_snapshots(
+        "TEST",
+        df,
+        {"lookbacks": [65], "min_segment_bars": 5, "max_segments": 3},
+        requested_lookbacks_by_effective={65: 250},
+    )
+
+    assert summaries[0]["requested_lookback_bars"] == 250
+    assert summaries[0]["lookback_bars"] == 65
+    assert summaries[0]["observation_count"] == 65
 
 
 def test_snapshots_default_to_single_250_bar_production_window() -> None:

@@ -15,6 +15,9 @@ _METHOD = "continuous_piecewise_log_linear_deterministic_hybrid_bic"
 _CALCULATION_VERSION = "adaptive_segmentation_v3"
 _EPSILON = 1e-12
 
+ADAPTIVE_SEGMENTATION_METHOD = _METHOD
+ADAPTIVE_SEGMENTATION_CALCULATION_VERSION = _CALCULATION_VERSION
+
 
 @dataclass(frozen=True)
 class SearchConfig:
@@ -81,6 +84,11 @@ def _normalize_search_config(params: dict[str, Any] | None) -> SearchConfig:
     ):
         raise ValueError("Adaptive trend search parameters are outside valid ranges.")
     return config
+
+
+def normalize_search_config(params: dict[str, Any] | None) -> dict[str, Any]:
+    """Return the canonical persisted search configuration."""
+    return asdict(_normalize_search_config(params))
 
 
 def _boundary_candidates(
@@ -532,12 +540,19 @@ def compute_adaptive_segmentation(
     max_segments: int = 4,
     bic_penalty_multiplier: float = 3.0,
     search_params: dict[str, Any] | None = None,
+    requested_lookback_bars: int | None = None,
 ) -> tuple[dict[str, Any] | None, list[dict[str, Any]]]:
     """Select a deterministic exact-or-hybrid continuous piecewise fit using BIC."""
+    requested_lookback = (
+        lookback_bars
+        if requested_lookback_bars is None
+        else int(requested_lookback_bars)
+    )
     if (
         df.empty
         or "close" not in df
         or lookback_bars < 2
+        or requested_lookback < lookback_bars
         or min_segment_bars < 2
         or max_segments < 1
         or bic_penalty_multiplier <= 0
@@ -608,6 +623,7 @@ def compute_adaptive_segmentation(
     summary = {
         "symbol": symbol,
         "date": latest_date,
+        "requested_lookback_bars": requested_lookback,
         "lookback_bars": lookback_bars,
         "observation_count": lookback_bars,
         "segment_count": segment_count,
@@ -666,6 +682,8 @@ def compute_adaptive_segmentation_snapshots(
     symbol: str,
     df: pd.DataFrame,
     params: dict[str, Any],
+    *,
+    requested_lookbacks_by_effective: dict[int, int] | None = None,
 ) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
     """Compute all configured adaptive segmentation lookbacks."""
     lookbacks = [int(value) for value in params.get("lookbacks", DEFAULT_LOOKBACKS)]
@@ -690,6 +708,11 @@ def compute_adaptive_segmentation_snapshots(
             max_segments=max_segments,
             bic_penalty_multiplier=bic_penalty_multiplier,
             search_params=search_params,
+            requested_lookback_bars=(
+                requested_lookbacks_by_effective.get(lookback_bars, lookback_bars)
+                if requested_lookbacks_by_effective is not None
+                else lookback_bars
+            ),
         )
         if summary is not None:
             summaries.append(summary)
