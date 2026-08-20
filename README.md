@@ -188,6 +188,12 @@ log 口径，不提前乘 100 或舍入；百分比展示由下游转换。
 
 ### 自适应初分段与 Pivot 精炼分段
 
+初分段分析范围与 `market-data update` 的行情更新范围对齐：包含全部
+`universe_type = 'etf'` 的有效 ETF ticker，以及每个
+`include_constituents_in_price_update = TRUE` universe 最新一期快照中的有效 EC 成分股。
+候选 symbol 合并去重，不再硬编码单一 watchlist；Pivot 精炼继续严格跟随所选日期已经成功
+持久化的 `adaptive_segmentation_v3` 初分段快照。
+
 初分段当前以 250 bars 为目标长窗口；标的历史不足 250 但至少有 40 bars 时，使用截止计算日的
 全部可用 bars，少于 40 bars 时跳过并输出 warning。在 log price 上对合法断点组合执行全局连续分段
 最小二乘。模型使用 linear-spline hinge basis，允许断点前后斜率变化，但要求拟合路径在
@@ -454,7 +460,8 @@ market-analysis run-indicators
 # 板块热度（所有 universe_ticker -> sector_heat_daily）
 market-analysis run-sector-heat
 
-# 自适应初分段（目标 250 bars；40–249 bars 自动使用实际可用窗口）
+# 自适应初分段（全部 ETF + 已启用行情更新的 universe 最新 EC 成分）
+# 目标 250 bars；40–249 bars 自动使用实际可用窗口
 market-analysis run-adaptive-segmentation
 
 # 指定行情截止日期与请求窗口（40–500 bars）

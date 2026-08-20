@@ -202,6 +202,25 @@ def test_adaptive_input_metadata_reads_capped_windows_in_one_query(
     )
 
 
+def test_segmentation_analysis_symbols_match_enabled_price_update_scope(
+    monkeypatch,
+) -> None:
+    connection = _FetchConnection([("AAPL",), ("QQQ",), ("SPY",)])
+    monkeypatch.setattr(queries, "get_source_conn", lambda: connection)
+
+    result = queries.fetch_segmentation_analysis_symbols()
+
+    assert result == ["AAPL", "QQQ", "SPY"]
+    statement, params = connection.executions[0]
+    assert params is None
+    assert "include_constituents_in_price_update = TRUE" in statement
+    assert "MAX(c.as_of_date)" in statement
+    assert "c.asset_cat = 'EC'" in statement
+    assert "c.stock_ticker ~ '^[A-Z]{1,5}$'" in statement
+    assert "u.universe_type = 'etf'" in statement
+    assert "UNION" in statement
+
+
 def test_adaptive_close_window_filters_source_date_and_limit(monkeypatch) -> None:
     target_date = date(2026, 8, 14)
     connection = _FetchConnection(

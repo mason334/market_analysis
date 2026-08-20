@@ -12,8 +12,7 @@ from market_analysis.db.queries import (
     fetch_adaptive_close_window,
     fetch_adaptive_input_metadata,
     fetch_adaptive_resume_candidates,
-    fetch_constituents_for_ticker,
-    fetch_universe_ticker_list,
+    fetch_segmentation_analysis_symbols,
     upsert_trend_segmentation_daily,
 )
 from market_analysis.indicators.adaptive_segmentation import (
@@ -26,16 +25,12 @@ from market_analysis.indicators.adaptive_segmentation import (
 
 log = structlog.get_logger(__name__)
 
-_ANALYSIS_UNIVERSE_TICKER = "OPTIONS_ACTIVE"
 _DEFAULT_MIN_FALLBACK_BARS = 40
 _MAX_REQUESTED_LOOKBACK_BARS = 500
 
 
 def _analysis_symbols() -> list[str]:
-    candidates = fetch_constituents_for_ticker(
-        _ANALYSIS_UNIVERSE_TICKER
-    ) + fetch_universe_ticker_list()
-    return list(dict.fromkeys(candidates))
+    return fetch_segmentation_analysis_symbols()
 
 
 def _resolve_effective_lookbacks(

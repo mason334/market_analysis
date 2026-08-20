@@ -84,6 +84,17 @@ def _patch_market_inputs(
     )
 
 
+def test_analysis_symbols_use_dynamic_price_update_scope(monkeypatch) -> None:
+    expected = ["AAPL", "NVDA", "QQQ"]
+    monkeypatch.setattr(
+        pipeline,
+        "fetch_segmentation_analysis_symbols",
+        lambda: expected,
+    )
+
+    assert pipeline._analysis_symbols() == expected
+
+
 def test_progress_advances_for_written_skipped_and_failed_symbols(monkeypatch) -> None:
     symbols = ["WRITTEN", "SKIPPED", "FAILED"]
     sufficient_frame = pd.DataFrame(

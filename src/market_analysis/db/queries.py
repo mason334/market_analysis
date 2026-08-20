@@ -1369,6 +1369,33 @@ WHERE LENGTH(ticker) <= 4
 ORDER BY ticker
 """
 
+_FETCH_SEGMENTATION_ANALYSIS_SYMBOLS = """
+WITH selected_latest AS (
+    SELECT c.universe_ticker, MAX(c.as_of_date) AS as_of_date
+    FROM universe_constituents c
+    JOIN universe u ON u.ticker = c.universe_ticker
+    WHERE u.include_constituents_in_price_update = TRUE
+    GROUP BY c.universe_ticker
+), candidates AS (
+    SELECT c.stock_ticker AS symbol
+    FROM universe_constituents c
+    JOIN selected_latest latest
+      ON latest.universe_ticker = c.universe_ticker
+     AND latest.as_of_date = c.as_of_date
+    WHERE c.stock_ticker IS NOT NULL
+      AND c.asset_cat = 'EC'
+      AND c.stock_ticker ~ '^[A-Z]{1,5}$'
+    UNION
+    SELECT u.ticker AS symbol
+    FROM universe u
+    WHERE u.universe_type = 'etf'
+      AND u.ticker ~ '^[A-Z]{1,5}$'
+)
+SELECT symbol
+FROM candidates
+ORDER BY symbol
+"""
+
 
 def fetch_universe_ticker_list() -> list[str]:
     """Returns ETF tickers from the universe table (ticker <= 4 chars).
@@ -1401,6 +1428,17 @@ def fetch_universe_subcategory_map() -> dict[str, str]:
     """Returns {ticker: sub_category} for all ETF tickers in universe table."""
     _, subcat = fetch_universe_category_maps()
     return subcat
+
+
+def fetch_segmentation_analysis_symbols() -> list[str]:
+    """Return the price-update-aligned symbol scope for segmentation pipelines."""
+    try:
+        with get_source_conn() as conn:
+            rows = conn.execute(_FETCH_SEGMENTATION_ANALYSIS_SYMBOLS).fetchall()
+    except Exception:
+        log.exception("db.fetch_segmentation_analysis_symbols.error")
+        return []
+    return [str(row[0]) for row in rows]
 
 
 def fetch_constituents_for_ticker(universe_ticker: str) -> list[str]:
