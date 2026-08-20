@@ -106,6 +106,8 @@ def test_close_pivots_drive_continuous_refined_segments() -> None:
     )
 
     assert summary["calculation_version"] == "pivot_refined_segmentation_v2"
+    assert summary["window_close_min"] == pytest.approx(frame["close"].min())
+    assert summary["window_close_max"] == pytest.approx(frame["close"].max())
     assert summary["pivot_count"] == 2
     assert [row["end_point_type"] for row in segments] == [
         "high",
@@ -145,6 +147,25 @@ def test_pivot_search_ignores_ohlc_extremes_and_is_deterministic() -> None:
     )
 
     assert first == second
+
+
+def test_window_close_bounds_use_only_the_actual_fallback_window() -> None:
+    source_summary, source_segments = _source()
+    frame = _frame()
+    earlier = pd.DataFrame(
+        {"close": [1.0, 1_000.0]},
+        index=pd.bdate_range(end=frame.index[0] - pd.Timedelta(days=1), periods=2),
+    )
+
+    summary, _ = compute_pivot_segmentation(
+        "TEST",
+        pd.concat([earlier, frame]),
+        source_summary,
+        source_segments,
+    )
+
+    assert summary["window_close_min"] == pytest.approx(frame["close"].min())
+    assert summary["window_close_max"] == pytest.approx(frame["close"].max())
 
 
 def test_wrong_source_version_is_rejected() -> None:

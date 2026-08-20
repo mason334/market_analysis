@@ -214,6 +214,8 @@ CREATE TABLE IF NOT EXISTS pivot_segmentation_daily (
     requested_lookback_bars                 INT   NOT NULL,
     lookback_bars                           INT   NOT NULL,
     observation_count                       INT   NOT NULL,
+    window_close_min                        FLOAT,
+    window_close_max                        FLOAT,
     pivot_count                             INT   NOT NULL,
     segment_count                           INT   NOT NULL,
     fit_rss                                 FLOAT,
@@ -230,6 +232,25 @@ CREATE TABLE IF NOT EXISTS pivot_segmentation_daily (
         CHECK (requested_lookback_bars >= lookback_bars),
     CHECK (lookback_bars >= 2),
     CHECK (observation_count = lookback_bars),
+    CONSTRAINT pivot_segmentation_window_close_bounds_check CHECK (
+        (window_close_min IS NULL AND window_close_max IS NULL)
+        OR (
+            window_close_min IS NOT NULL
+            AND window_close_max IS NOT NULL
+            AND window_close_min > 0
+            AND window_close_max >= window_close_min
+            AND window_close_min NOT IN (
+                'NaN'::double precision,
+                'Infinity'::double precision,
+                '-Infinity'::double precision
+            )
+            AND window_close_max NOT IN (
+                'NaN'::double precision,
+                'Infinity'::double precision,
+                '-Infinity'::double precision
+            )
+        )
+    ),
     CHECK (pivot_count >= 0),
     CHECK (segment_count = pivot_count + 1),
     CHECK (search_radius_bars >= 0),
@@ -239,12 +260,48 @@ CREATE TABLE IF NOT EXISTS pivot_segmentation_daily (
 
 _ALTER_PIVOT_SEGMENTATION_DAILY = """
 ALTER TABLE pivot_segmentation_daily
-    ADD COLUMN IF NOT EXISTS requested_lookback_bars INT;
+    ADD COLUMN IF NOT EXISTS requested_lookback_bars INT,
+    ADD COLUMN IF NOT EXISTS window_close_min FLOAT,
+    ADD COLUMN IF NOT EXISTS window_close_max FLOAT;
 UPDATE pivot_segmentation_daily
     SET requested_lookback_bars = lookback_bars
     WHERE requested_lookback_bars IS NULL;
 ALTER TABLE pivot_segmentation_daily
     ALTER COLUMN requested_lookback_bars SET NOT NULL;
+"""
+
+_ENSURE_PIVOT_SEGMENTATION_WINDOW_CLOSE_BOUNDS_CHECK = """
+DO $$
+BEGIN
+    IF NOT EXISTS (
+        SELECT 1
+        FROM pg_constraint
+        WHERE conname = 'pivot_segmentation_window_close_bounds_check'
+          AND conrelid = 'pivot_segmentation_daily'::regclass
+    ) THEN
+        ALTER TABLE pivot_segmentation_daily
+            ADD CONSTRAINT pivot_segmentation_window_close_bounds_check CHECK (
+                (window_close_min IS NULL AND window_close_max IS NULL)
+                OR (
+                    window_close_min IS NOT NULL
+                    AND window_close_max IS NOT NULL
+                    AND window_close_min > 0
+                    AND window_close_max >= window_close_min
+                    AND window_close_min NOT IN (
+                        'NaN'::double precision,
+                        'Infinity'::double precision,
+                        '-Infinity'::double precision
+                    )
+                    AND window_close_max NOT IN (
+                        'NaN'::double precision,
+                        'Infinity'::double precision,
+                        '-Infinity'::double precision
+                    )
+                )
+            );
+    END IF;
+END
+$$
 """
 
 _ENSURE_PIVOT_SEGMENTATION_REQUESTED_LOOKBACK_CHECK = """
@@ -468,6 +525,7 @@ def init_schema() -> None:
         conn.execute(_CREATE_PIVOT_SEGMENTATION_DAILY)
         _execute_statements(conn, _ALTER_PIVOT_SEGMENTATION_DAILY)
         conn.execute(_ENSURE_PIVOT_SEGMENTATION_REQUESTED_LOOKBACK_CHECK)
+        conn.execute(_ENSURE_PIVOT_SEGMENTATION_WINDOW_CLOSE_BOUNDS_CHECK)
         _execute_statements(conn, _CREATE_PIVOT_SEGMENTATION_DAILY_IDX)
         conn.execute(_CREATE_PIVOT_SEGMENT_DAILY)
         _execute_statements(conn, _CREATE_PIVOT_SEGMENT_DAILY_IDX)

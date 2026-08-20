@@ -478,6 +478,8 @@ def compute_pivot_segmentation(
         ),
         "lookback_bars": lookback_bars,
         "observation_count": lookback_bars,
+        "window_close_min": float(np.min(closes)),
+        "window_close_max": float(np.max(closes)),
         "pivot_count": len(selected_pivots),
         "segment_count": len(boundaries) - 1,
         "fit_rss": rss,

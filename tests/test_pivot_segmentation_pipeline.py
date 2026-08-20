@@ -100,6 +100,8 @@ def test_pipeline_reads_canonical_source_and_upserts_result(monkeypatch) -> None
     assert len(written) == 1
     assert written[0][0][0]["requested_lookback_bars"] == 250
     assert written[0][0][0]["calculation_version"] == "pivot_refined_segmentation_v2"
+    assert written[0][0][0]["window_close_min"] == float(close.min())
+    assert written[0][0][0]["window_close_max"] == float(close.max())
     assert [row["end_point_type"] for row in written[0][1]] == [
         "high",
         "low",

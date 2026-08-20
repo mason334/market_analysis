@@ -360,16 +360,22 @@ _ADAPTIVE_RESUME_CANDIDATE_COLS = [
 _UPSERT_PIVOT_SEGMENTATION_DAILY = """
 INSERT INTO pivot_segmentation_daily (
     symbol, date, requested_lookback_bars, lookback_bars, observation_count,
+    window_close_min, window_close_max,
     pivot_count, segment_count, fit_rss,
     search_radius_bars, min_segment_bars,
     classification_config, resolution_diagnostics,
     source_segmentation_method, source_segmentation_calculation_version,
     method, calculation_version
 )
-VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+VALUES (
+    %s, %s, %s, %s, %s, %s, %s, %s, %s,
+    %s, %s, %s, %s, %s, %s, %s, %s, %s
+)
 ON CONFLICT (symbol, date, lookback_bars) DO UPDATE SET
     requested_lookback_bars                 = EXCLUDED.requested_lookback_bars,
     observation_count                       = EXCLUDED.observation_count,
+    window_close_min                        = EXCLUDED.window_close_min,
+    window_close_max                        = EXCLUDED.window_close_max,
     pivot_count                             = EXCLUDED.pivot_count,
     segment_count                           = EXCLUDED.segment_count,
     fit_rss                                 = EXCLUDED.fit_rss,
@@ -465,6 +471,7 @@ WHERE calculation_version = 'pivot_refined_segmentation_v2'
 
 _FETCH_PIVOT_SEGMENTATION_SNAPSHOT = """
 SELECT symbol, date, requested_lookback_bars, lookback_bars, observation_count,
+       window_close_min, window_close_max,
        pivot_count, segment_count, fit_rss,
        search_radius_bars, min_segment_bars,
        classification_config, resolution_diagnostics,
@@ -477,7 +484,7 @@ ORDER BY symbol, lookback_bars
 
 _PIVOT_SEGMENTATION_COLS = [
     "symbol", "date", "requested_lookback_bars", "lookback_bars",
-    "observation_count", "pivot_count",
+    "observation_count", "window_close_min", "window_close_max", "pivot_count",
     "segment_count", "fit_rss", "search_radius_bars", "min_segment_bars",
     "classification_config", "resolution_diagnostics", "source_segmentation_method",
     "source_segmentation_calculation_version", "method", "calculation_version",
@@ -1083,6 +1090,8 @@ def upsert_pivot_segmentation_daily(
                     row.get("requested_lookback_bars", lookback_bars),
                     lookback_bars,
                     row["observation_count"],
+                    row.get("window_close_min"),
+                    row.get("window_close_max"),
                     row["pivot_count"],
                     row["segment_count"],
                     row.get("fit_rss"),

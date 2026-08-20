@@ -46,6 +46,8 @@ def _summary(lookback_bars: int = 30) -> dict[str, Any]:
         "requested_lookback_bars": 250,
         "lookback_bars": lookback_bars,
         "observation_count": lookback_bars,
+        "window_close_min": 50.0,
+        "window_close_max": 75.0,
         "pivot_count": 0,
         "segment_count": 1,
         "fit_rss": 0.01,
@@ -121,8 +123,9 @@ def test_pivot_upsert_replaces_detail_rows_and_writes_two_tables(monkeypatch) ->
         for item in connection.executions
         if "INSERT INTO pivot_segment_daily" in item[0]
     )
-    assert len(summary_execution[1] or ()) == 16
+    assert len(summary_execution[1] or ()) == 18
     assert (summary_execution[1] or ())[2:5] == (250, 30, 30)
+    assert (summary_execution[1] or ())[5:7] == (50.0, 75.0)
     assert len(segment_execution[1] or ()) == 37
 
 
@@ -165,6 +168,9 @@ def test_schema_creates_pivot_summary_and_segment_tables(monkeypatch) -> None:
     assert "PRIMARY KEY (symbol, date, lookback_bars)" in statements
     assert "PRIMARY KEY (symbol, date, lookback_bars, segment_index)" in statements
     assert "pivot_segmentation_requested_lookback_check" in statements
+    assert "window_close_min" in statements
+    assert "window_close_max" in statements
+    assert "pivot_segmentation_window_close_bounds_check" in statements
     assert "pivot_segment_daily_date_endpoint_type_idx" in statements
 
 

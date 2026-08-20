@@ -224,7 +224,8 @@ log 口径，不提前乘 100 或舍入；百分比展示由下游转换。
 方向转换点左右各 5 bars 内只使用 close 搜索 `high/low` pivot。最终以固定 pivot 横坐标重新
 执行全局连续 log-linear OLS；结果写入 `pivot_segmentation_daily` 与
 `pivot_segment_daily`。内部 pivot 元数据归属于左侧 segment 的终点，末段终点类型为
-`window_end`。
+`window_end`。summary 同时保存实际回看窗口全部日线 close 的 `window_close_min` 与
+`window_close_max`；两者不是 OHLC low/high，也不是仅由 Pivot 端点计算的范围。
 
 `run-pivot-segmentation` 按 symbol 聚合同一日期的全部实际 lookback，同一 symbol 只读取一次
 OHLCV；所有 lookback 均计算成功后，在单次事务中整体写入。任一 lookback 失败时，该 symbol 本轮
