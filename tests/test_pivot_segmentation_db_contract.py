@@ -57,8 +57,8 @@ def _summary(lookback_bars: int = 30) -> dict[str, Any]:
         "resolution_diagnostics": {"selected_pivot_count": 0},
         "source_segmentation_method": "source_method",
         "source_segmentation_calculation_version": "adaptive_segmentation_v3",
-        "method": "pivot_seeded_continuous_piecewise_log_linear",
-        "calculation_version": "pivot_refined_segmentation_v2",
+        "method": "pivot_seeded_independent_piecewise_log_linear",
+        "calculation_version": "pivot_refined_segmentation_v3",
     }
 
 
@@ -99,8 +99,8 @@ def _segment(lookback_bars: int = 30) -> dict[str, Any]:
         "pivot_source_right_type": None,
         "pivot_source_segment_indices": [],
         "pivot_resolution_status": None,
-        "method": "pivot_seeded_continuous_piecewise_log_linear",
-        "calculation_version": "pivot_refined_segmentation_v2",
+        "method": "pivot_seeded_independent_piecewise_log_linear",
+        "calculation_version": "pivot_refined_segmentation_v3",
     }
 
 

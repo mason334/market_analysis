@@ -8,8 +8,8 @@ from typing import Any
 import numpy as np
 import pandas as pd
 
-_METHOD = "pivot_seeded_continuous_piecewise_log_linear"
-_CALCULATION_VERSION = "pivot_refined_segmentation_v2"
+_METHOD = "pivot_seeded_independent_piecewise_log_linear"
+_CALCULATION_VERSION = "pivot_refined_segmentation_v3"
 _SOURCE_CALCULATION_VERSION = "adaptive_segmentation_v3"
 _EPSILON = 1e-12
 
@@ -342,27 +342,24 @@ def _select_pivots(
     return selected, diagnostics
 
 
-def _continuous_fit(
+def _independent_fit(
     log_prices: np.ndarray, boundaries: tuple[int, ...]
-) -> tuple[np.ndarray, np.ndarray, float]:
-    size = len(log_prices)
-    scale = float(max(size - 1, 1))
-    x = np.arange(size, dtype=float) / scale
-    columns = [np.ones(size, dtype=float), x]
-    columns.extend(
-        np.maximum(x - float(boundary - 1) / scale, 0.0)
-        for boundary in boundaries[1:-1]
-    )
-    design = np.column_stack(columns)
-    coefficients, _, _, _ = np.linalg.lstsq(design, log_prices, rcond=None)
-    fitted = design @ coefficients
-    residuals = log_prices - fitted
-    rss = max(float(np.dot(residuals, residuals)), 0.0)
-    slopes = coefficients[1] + np.concatenate(
-        (np.array([0.0]), np.cumsum(coefficients[2:], dtype=float))
-    )
-    slopes /= scale
-    return fitted, slopes.astype(float), rss
+) -> tuple[tuple[np.ndarray, ...], np.ndarray, float]:
+    fitted_segments: list[np.ndarray] = []
+    slopes: list[float] = []
+    total_rss = 0.0
+    for start_boundary, end_boundary in zip(boundaries[:-1], boundaries[1:]):
+        start_endpoint = 0 if start_boundary == 0 else start_boundary - 1
+        actual = log_prices[start_endpoint:end_boundary]
+        x = np.arange(len(actual), dtype=float)
+        design = np.column_stack((np.ones(len(actual), dtype=float), x))
+        coefficients, _, _, _ = np.linalg.lstsq(design, actual, rcond=None)
+        fitted = design @ coefficients
+        residuals = actual - fitted
+        fitted_segments.append(fitted.astype(float))
+        slopes.append(float(coefficients[1]))
+        total_rss += max(float(np.dot(residuals, residuals)), 0.0)
+    return tuple(fitted_segments), np.asarray(slopes, dtype=float), total_rss
 
 
 def _linearity_r2(actual: np.ndarray, fitted: np.ndarray) -> float:
@@ -377,7 +374,7 @@ def _linearity_r2(actual: np.ndarray, fitted: np.ndarray) -> float:
 
 def _segment_metrics(
     log_prices: np.ndarray,
-    fitted: np.ndarray,
+    fitted_segment: np.ndarray,
     slope: float,
     start_boundary: int,
     end_boundary: int,
@@ -385,7 +382,8 @@ def _segment_metrics(
     start_endpoint = 0 if start_boundary == 0 else start_boundary - 1
     end_endpoint = end_boundary - 1
     actual = log_prices[start_endpoint:end_boundary]
-    fitted_segment = fitted[start_endpoint:end_boundary]
+    if len(fitted_segment) != len(actual):
+        raise ValueError("Independent fitted segment does not match its endpoint range.")
     log_returns = np.diff(actual)
     return_interval_count = len(log_returns)
     actual_return = float(actual[-1] - actual[0])
@@ -463,7 +461,7 @@ def compute_pivot_segmentation(
     )
     boundaries = (0, *(pivot.bar_index + 1 for pivot in selected_pivots), lookback_bars)
     log_prices = np.log(closes)
-    fitted, slopes, rss = _continuous_fit(log_prices, boundaries)
+    fitted_segments, slopes, rss = _independent_fit(log_prices, boundaries)
 
     classification_config = {
         "min_abs_fitted_log_return": min_return,
@@ -501,7 +499,7 @@ def compute_pivot_segmentation(
     ):
         metrics = _segment_metrics(
             log_prices,
-            fitted,
+            fitted_segments[segment_index],
             float(slopes[segment_index]),
             start_boundary,
             end_boundary,
@@ -558,27 +556,38 @@ def reconstruct_pivot_fit(
     summary: dict[str, Any],
     segments: list[dict[str, Any]],
 ) -> pd.DataFrame:
-    """Reconstruct a persisted pivot fit for diagnostics or downstream charts."""
+    """Reconstruct persisted independent segment lines without joining their endpoints."""
     lookback_bars = int(summary["lookback_bars"])
     source_date = summary["date"]
     frame = df[df.index.date <= source_date].iloc[-lookback_bars:]
     if len(frame) != lookback_bars or not segments:
         return pd.DataFrame()
     ordered = sorted(segments, key=lambda row: int(row["segment_index"]))
-    boundaries = (
-        0,
-        *(int(row["end_boundary_index_exclusive"]) for row in ordered[:-1]),
-        lookback_bars,
-    )
-    log_prices = np.log(frame["close"].to_numpy(dtype=float))
-    fitted, _, _ = _continuous_fit(log_prices, boundaries)
-    return pd.DataFrame(
-        {
-            "close": np.exp(log_prices),
-            "log_close": log_prices,
-            "fitted_close": np.exp(fitted),
-            "fitted_log_close": fitted,
-            "residual_log": log_prices - fitted,
-        },
-        index=frame.index,
-    )
+    reconstructed: list[pd.DataFrame] = []
+    for row in ordered:
+        start_endpoint = int(row["start_endpoint_bar_index"])
+        end_endpoint = int(row["end_endpoint_bar_index"])
+        if not 0 <= start_endpoint <= end_endpoint < len(frame):
+            return pd.DataFrame()
+        actual = np.log(
+            frame["close"].iloc[start_endpoint : end_endpoint + 1].to_numpy(dtype=float)
+        )
+        positions = np.arange(len(actual), dtype=float)
+        fitted_start = float(row["fitted_start_log_price"])
+        fitted_end = float(row["fitted_end_log_price"])
+        denominator = max(end_endpoint - start_endpoint, 1)
+        fitted = fitted_start + (fitted_end - fitted_start) * positions / denominator
+        reconstructed.append(
+            pd.DataFrame(
+                {
+                    "segment_index": int(row["segment_index"]),
+                    "close": np.exp(actual),
+                    "log_close": actual,
+                    "fitted_close": np.exp(fitted),
+                    "fitted_log_close": fitted,
+                    "residual_log": actual - fitted,
+                },
+                index=frame.index[start_endpoint : end_endpoint + 1],
+            )
+        )
+    return pd.concat(reconstructed)

@@ -220,9 +220,9 @@ log 口径，不提前乘 100 或舍入；百分比展示由下游转换。
   例如目标 250、实际可用 65 时分别保存 `250/65/65`。
 - 独立分段命令不会修改 `trend_daily`，也不会由 `run-indicators` 自动触发。
 
-`pivot_refined_segmentation_v2` 将初始段分类为 `up/down/flat`、合并相邻同类段，再在每个
+`pivot_refined_segmentation_v3` 将初始段分类为 `up/down/flat`、合并相邻同类段，再在每个
 方向转换点左右各 5 bars 内只使用 close 搜索 `high/low` pivot。最终以固定 pivot 横坐标重新
-执行全局连续 log-linear OLS；结果写入 `pivot_segmentation_daily` 与
+对每个 Pivot-to-Pivot 区间执行独立 log-linear OLS，允许相邻拟合端点不连续；结果写入 `pivot_segmentation_daily` 与
 `pivot_segment_daily`。内部 pivot 元数据归属于左侧 segment 的终点，末段终点类型为
 `window_end`。summary 同时保存实际回看窗口全部日线 close 的 `window_close_min` 与
 `window_close_max`；两者不是 OHLC low/high，也不是仅由 Pivot 端点计算的范围。

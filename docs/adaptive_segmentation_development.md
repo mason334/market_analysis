@@ -3,10 +3,10 @@
 > 文档状态：已实施
 > 当前初分段口径：`adaptive_segmentation_v3`
 > 当前初分段方法：`continuous_piecewise_log_linear_deterministic_hybrid_bic`
-> 当前精炼分段口径：`pivot_refined_segmentation_v2`
-> 当前精炼分段方法：`pivot_seeded_continuous_piecewise_log_linear`
-> 已实施方案：`MA-PIVOT-SEG v2.0.0`
-> 最近更新：2026-08-15
+> 当前精炼分段口径：`pivot_refined_segmentation_v3`
+> 当前精炼分段方法：`pivot_seeded_independent_piecewise_log_linear`
+> 已实施方案：`MA-PSR-LOCAL v1.0.0`
+> 最近更新：2026-08-20
 
 ## 1. 文档目的
 
@@ -23,7 +23,7 @@
 
 ## 2. 当前工作状态
 
-### 2.1 已实现：`adaptive_segmentation_v3` 与 `pivot_refined_segmentation_v2`
+### 2.1 已实现：`adaptive_segmentation_v3` 与 `pivot_refined_segmentation_v3`
 
 当前 `src/market_analysis/indicators/adaptive_segmentation.py` 已实现：
 
@@ -68,7 +68,7 @@ indicators:
 250 bars 目标窗口的最大分段数上限为 10；fallback 窗口按实际长度重新计算分段数上限。候选空间超过预算时进入
 `hybrid_approximate`。summary 明确保存搜索模式、全局最优保证、实际候选数、refinement
 收敛状态、搜索配置和逐 `K` 诊断。随后 `pivot_segmentation.py` 对初始段分类、合并，只用
-close 在 seed 左右各 5 bars 搜索确定性 pivot，并将连续重拟合结果写入两张独立新表。
+close 在 seed 左右各 5 bars 搜索确定性 pivot，并将逐个 Pivot 区间的独立 OLS 结果写入两张独立表。
 
 ### 2.2 版本来源与 v1 → v2 沿革
 
@@ -1299,6 +1299,15 @@ v3 已增加以下摘要字段：`search_mode`、`is_global_optimum`、`candidat
 - **确认日期**：2026-08-15
 - **实施日期**：2026-08-15
 
+拟合口径后续由以下不兼容方案修订：
+
+- **方案名称**：Pivot 区间独立回归
+- **方案编号**：`MA-PSR-LOCAL`
+- **版本号**：`v1.0.0`
+- **状态**：已实施
+- **确认日期**：2026-08-20
+- **实施日期**：2026-08-20
+
 本节是当前正式开发口径。代码、配置、幂等数据库 schema、CLI、测试和下游查询函数均已按本节
 实现；第 2～16 节保留为历史沿革与旧口径说明。实际数据库仍需在部署时运行
 `market-analysis init-db` 才会创建新表。
@@ -1308,8 +1317,8 @@ v3 已增加以下摘要字段：`search_mode`、`is_global_optimum`、`candidat
 本方案把行情路径识别拆成两个职责明确的阶段：
 
 1. `adaptive_segmentation_v3`：通过 BIC 选择连续分段模型，生成用于发现路径结构的初始分段；
-2. `pivot_refined_segmentation_v2`：根据初始分段方向生成 pivot seed，在局部 close-price 极值附近
-   定位 pivot，并以固定 pivot 横坐标重新执行全局连续最小二乘拟合。
+2. `pivot_refined_segmentation_v3`：根据初始分段方向生成 pivot seed，在局部 close-price 极值附近
+   定位 pivot，并在相邻实际 pivot 之间分别执行独立最小二乘拟合。
 
 目标是得到由实际价格转折点主导、边界语义明确且可供下游读取的分段快照。该结果属于描述性
 行情指标，不构成交易策略、买卖建议、持仓规则或自动交易信号。
@@ -1415,8 +1424,8 @@ z_j = \frac{s_j\sqrt{m_j}}{\sigma_j}
 - `flat + flat -> flat`。
 
 合并段保存其覆盖的源 `segment_index` 列表、最早起点、最晚终点和左右方向。合并阶段只用于
-生成 pivot seed，不将各段独立 OLS 指标简单相加后冒充新的回归结果；最终统计全部由 pivot
-固定后重新执行的全局连续 OLS 产生。
+生成 pivot seed，不将源自 adaptive segmentation 的逐段指标简单相加后冒充新的回归结果；最终统计
+全部由 pivot 固定后对每个 Pivot-to-Pivot 区间重新执行的独立 OLS 产生。
 
 ### 17.7 Pivot seed 类型
 
@@ -1502,32 +1511,32 @@ b_0=0,\quad b_k=p_k+1\ (1\le k\le K),\quad b_{K+1}=n
 `start_boundary_index`、`end_boundary_index_exclusive`、`start_endpoint_bar_index` 和
 `end_endpoint_bar_index`。
 
-### 17.10 固定 Pivot 的全局连续拟合
+### 17.10 固定 Pivot 的区间独立拟合
 
 令：
 
-- `i` 是窗口内 bar 索引，取值为 0～`n-1`；
-- `y_i = log(P_i)`，其中 `P_i` 是第 `i` 根 bar 的 close；
-- `p_k` 是第 `k` 个内部 pivot 的 bar 索引；
-- `K` 是内部 pivot 数；
-- `β_0` 是回归截距；
-- `β_1` 是第一个线性区间的基础斜率；
-- `δ_k` 是通过 pivot `p_k` 后的斜率变化；
-- `ε_i` 是 observation `i` 的拟合残差。
+- `j` 是 segment 序号，取值为 `0`～`S-1`，其中 `S=K+1` 是 segment 数，`K` 是内部 pivot 数；
+- `a_j` 是第 `j` 段的拟合起点 bar；首段为 `a_0=0`，后续段为共享 pivot bar
+  `a_j=b_j-1=p_j`；
+- `c_j=b_{j+1}-1` 是第 `j` 段的拟合终点 bar；
+- `t` 是第 `j` 段内从零开始的局部时间索引，取值为 `0`～`c_j-a_j`；
+- `y_{j,t}=log(P_{a_j+t})`，其中 `P_{a_j+t}` 是对应 bar 的 close；
+- `α_j` 是第 `j` 段独立估计的截距；
+- `s_j` 是第 `j` 段独立估计的每 bar log slope；
+- `ε_{j,t}` 是第 `j` 段局部 observation 的拟合残差。
 
 最终模型为：
 
 \[
-y_i = \beta_0 + \beta_1 i
-      + \sum_{k=1}^{K}\delta_k\max(0,i-p_k)
-      + \varepsilon_i
+y_{j,t}=\alpha_j+s_jt+\varepsilon_{j,t}
 \]
 
-`Σ` 表示对 `k = 1` 到 `K` 求和，`max(0,i-p_k)` 是 linear-spline hinge 项。所有系数通过一次
-全局普通最小二乘求解，因此拟合曲线在每个 `p_k` 处连续。
+每个 segment 分别使用普通最小二乘估计 `α_j` 和 `s_j`。内部共享 pivot 作为左段终点和右段起点，
+同时参与相邻两次局部回归；数据所有权仍遵守第 17.9 节的半开边界，不因拟合输入共享而改变。
 
-Pivot 只固定 knot 的横坐标，不强制拟合曲线经过该 bar 的实际 close。该选择保留普通最小二乘的
-统计含义；如果未来要求强制穿过 pivot close，应另立不兼容方案和新计算版本。
+相邻 segment 的 `fitted_end_log_price` 与 `fitted_start_log_price` 不要求相等，拟合线在共享 pivot
+横坐标处可以不连续。实际 close 和实际收益路径仍连续且无重复。summary 的 `fit_rss` 定义为各局部
+回归残差平方和之和；共享 pivot 的两个局部残差分别属于左右两次回归，因此均计入该汇总值。
 
 ### 17.11 最终分段指标
 
@@ -1558,7 +1567,7 @@ Pivot 只固定 knot 的横坐标，不强制拟合曲线经过该 bar 的实际
 
 主键：`(symbol, date, lookback_bars)`。
 
-保存窗口 observation 数、pivot 数、最终段数、全局 RSS、搜索半径、最短段长度、分类阈值、源分段
+保存窗口 observation 数、pivot 数、最终段数、局部回归 RSS 合计、搜索半径、最短段长度、分类阈值、源分段
 method/version、当前 method/version 和冲突消解摘要。
 
 #### `pivot_segment_daily`
@@ -1663,9 +1672,9 @@ market-analysis compute-adaptive-segmentation --symbol AAPL --lookback 250
 - [x] 实现 ±5 bars close 极值搜索；
 - [x] 实现最短段、同类 pivot 和冲突消解规则。
 
-#### 阶段 C：连续重拟合与持久化
+#### 阶段 C：独立重拟合与持久化
 
-- [x] 实现固定 pivot 横坐标的全局连续 log-linear OLS；
+- [x] 实现固定 pivot 区间的独立 log-linear OLS；
 - [x] 实现无歧义的半开边界和共享端点字段；
 - [x] 创建两张幂等新表和 upsert/query 函数；
 - [x] 增加批量 pipeline、日志、CLI 和失败隔离。
@@ -1674,7 +1683,7 @@ market-analysis compute-adaptive-segmentation --symbol AAPL --lookback 250
 
 - [x] 测试 `up/down/flat` 阈值边界；
 - [x] 测试六种转向、平台双 seed、窗口边缘、同价和冲突；
-- [x] 断言 pivot 严格递增、分段无重叠/遗漏、拟合在 knot 连续；
+- [x] 断言 pivot 严格递增、分段无重叠/遗漏，并允许相邻局部拟合端点不连续；
 - [x] 断言非末段 `end_point_type` 均为 `high/low`、末段为 `window_end`，且
   `pivot_count = segment_count - 1`；
 - [x] 断言各段实际 log return 之和等于窗口实际 log return；
@@ -1702,15 +1711,23 @@ market-analysis compute-adaptive-segmentation --symbol AAPL --lookback 250
 - `v2.0.0`：已实施方案；pivot 统一在 close 中搜索，删除独立 point 表，将节点及审计字段合并到
   `pivot_segment_daily` 的 segment 终点。
 
+`MA-PSR-LOCAL` 版本记录：
+
+- `v1.0.0`：保留 seed、close 极值搜索和边界规则，将最终拟合从全局连续 OLS 替换为逐 Pivot 区间
+  独立 OLS；计算口径升级为 `pivot_refined_segmentation_v3`。
+
 ### 17.18 实施结果
 
 - 规范初分段模块、批处理、单标的计算和验证入口已迁移到 `adaptive_segmentation` 命名；旧模块与
   CLI 作为隐藏兼容入口保留一个迁移周期；
 - 新增纯计算 `pivot_segmentation.py`、批处理 `run_pivot_segmentation.py`、两张幂等表及完整
   upsert/query 契约；
-- 合成测试覆盖六种方向转换、平台双 seed、同价极值、窗口边缘、相邻冲突、连续拟合、收益可加性
+- 合成测试覆盖六种方向转换、平台双 seed、同价极值、窗口边缘、相邻冲突、独立拟合、收益可加性
   和数据库契约；
 - 2026-08-15 验证结果：本方案变更文件 Ruff 通过，完整 pytest 为 `139 passed`；
+- 2026-08-20 `MA-PSR-LOCAL v1.0.0` 实施结果：最终 Pivot 拟合升级为逐区间独立 OLS，变更文件
+  Ruff 通过，完整 pytest 为 `163 passed`；XLE 2026-03-27～2026-04-17 区间由旧口径的错误上涨
+  拟合修正为 `fitted_log_return=-0.118859`、`linearity_r2=0.907941`、`segment_type=down`；
 - 本次未连接或修改实际 PostgreSQL；部署时需先运行 `market-analysis init-db`，再按第 17.13 节
   顺序生成快照。
 

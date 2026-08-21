@@ -466,7 +466,7 @@ WHERE symbol = %s AND date = %s AND NOT (lookback_bars = ANY(%s))
 
 _FETCH_LATEST_PIVOT_SEGMENTATION_DATE = """
 SELECT MAX(date) FROM pivot_segmentation_daily
-WHERE calculation_version = 'pivot_refined_segmentation_v2'
+WHERE calculation_version = 'pivot_refined_segmentation_v3'
 """
 
 _FETCH_PIVOT_SEGMENTATION_SNAPSHOT = """

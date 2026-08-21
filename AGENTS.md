@@ -201,10 +201,11 @@ summary 使用 `requested_lookback_bars` 保存配置目标，使用 `lookback_b
 log return。BIC 复杂度惩罚乘数由 `bic_penalty_multiplier` 配置，默认 3.0，并随摘要
 持久化。实验由独立 CLI 触发，不属于 `run-indicators` 固定窗口流程。
 
-`pivot_segmentation_daily` 保存 `pivot_refined_segmentation_v2` 窗口摘要与源分段版本，并从初分段
+`pivot_segmentation_daily` 保存 `pivot_refined_segmentation_v3` 窗口摘要与源分段版本，并从初分段
 summary 继承 `requested_lookback_bars`；`window_close_min/window_close_max` 保存实际回看窗口中
 全部日线 close 的最低值和最高值，不使用 OHLC low/high，也不限于 Pivot 端点；
-`pivot_segment_daily` 保存固定 close pivot 后重新连续拟合的分段指标。内部 pivot 作为左侧
+`pivot_segment_daily` 保存固定 close pivot 后逐个 Pivot-to-Pivot 区间独立 OLS 的分段指标；相邻
+局部拟合端点允许不连续。内部 pivot 作为左侧
 segment 的终点保存，`end_point_type` 为 `high/low`；末段为 `window_end`。Pivot 只在 seed
 左右各 5 bars 的 close 中搜索，不读取 OHLC 极值。数据归属继续使用 `[start, end)`，共享
 pivot 的端点索引另存，避免边界语义混淆。
