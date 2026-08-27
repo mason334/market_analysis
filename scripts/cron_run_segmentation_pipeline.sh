@@ -68,7 +68,20 @@ log_line() {
 # 环境变量
 # ---------------------------------------------------------------------------
 
-# 加载项目 .env，主要用于 market_analysis/market_data 数据库连接和可选邮件配置。
+# 先加载 PN64 上所有投资任务共用的邮件配置。
+# 可通过 MAIL_CONFIG_FILE 指向其他配置文件；文件不存在时继续运行。
+MAIL_CONFIG_FILE="${MAIL_CONFIG_FILE:-${HOME}/.config/investment-jobs/mail.env}"
+if [ -r "${MAIL_CONFIG_FILE}" ]; then
+    set -a
+
+    # shellcheck disable=SC1090
+    source "${MAIL_CONFIG_FILE}"
+
+    set +a
+fi
+
+# 再加载项目 .env，主要用于 market_analysis/market_data 数据库连接。
+# 项目级配置后加载，因此可按需覆盖共享邮件配置。
 # set -a 会让 source 读取的变量自动 export 给后续 CLI 子进程。
 if [ -f .env ]; then
     set -a
@@ -79,7 +92,7 @@ if [ -f .env ]; then
     set +a
 fi
 
-# 邮件配置是可选的，可在 .env 中设置 MAIL_TO、MAIL_FROM 和 MSMTP_BIN。
+# 邮件配置是可选的，可在共享配置或项目 .env 中设置 MAIL_TO、MAIL_FROM 和 MSMTP_BIN。
 # 如果收发件地址未设置，任务仍会正常运行，只是不发送通知邮件。
 MAIL_TO="${MAIL_TO:-}"
 MAIL_FROM="${MAIL_FROM:-}"
