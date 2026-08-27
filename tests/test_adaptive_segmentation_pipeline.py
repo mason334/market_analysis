@@ -340,6 +340,9 @@ def test_pipeline_skips_complete_matching_snapshot(monkeypatch) -> None:
         symbol=symbol,
         date=str(target_date),
         lookbacks=[40],
+        progress="[1/1]",
+        completion="100.0%",
+        eta="0sec",
     )
     logger.info.assert_any_call(
         "adaptive_segmentation.done",
@@ -423,6 +426,9 @@ def test_pipeline_skips_symbol_below_fallback_minimum(monkeypatch) -> None:
         symbol=symbol,
         available=39,
         minimum=40,
+        progress="[1/1]",
+        completion="100.0%",
+        eta="0sec",
     )
     logger.info.assert_any_call(
         "adaptive_segmentation.done",

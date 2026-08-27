@@ -44,6 +44,85 @@ class _SearchOutcome:
     top_boundaries: tuple[tuple[int, ...], ...]
 
 
+class _RssEvaluator:
+    """Evaluate candidate RSS values from shared spline sufficient statistics."""
+
+    def __init__(self, log_prices: np.ndarray) -> None:
+        self.log_prices = log_prices
+        self._basis_gram, self._basis_rhs = _spline_sufficient_statistics(log_prices)
+        self._response_sum_squares = float(np.dot(log_prices, log_prices))
+        self._rss_by_boundaries: dict[tuple[int, ...], float] = {}
+
+    def evaluate(self, candidates: list[tuple[int, ...]]) -> np.ndarray:
+        """Return RSS in input order, solving each distinct candidate at most once."""
+        if not candidates:
+            return np.array([], dtype=float)
+
+        missing = list(
+            dict.fromkeys(
+                boundaries
+                for boundaries in candidates
+                if boundaries not in self._rss_by_boundaries
+            )
+        )
+        if missing:
+            self._rss_by_boundaries.update(
+                zip(missing, self._evaluate_uncached(missing), strict=True)
+            )
+        return np.asarray(
+            [self._rss_by_boundaries[boundaries] for boundaries in candidates],
+            dtype=float,
+        )
+
+    def _evaluate_uncached(self, candidates: list[tuple[int, ...]]) -> np.ndarray:
+        if len(candidates[0]) == 2:
+            return np.asarray(
+                [
+                    _fit_continuous_piecewise(self.log_prices, boundaries)[3]
+                    for boundaries in candidates
+                ],
+                dtype=float,
+            )
+
+        column_count = len(candidates[0]) + 1
+        if any(len(boundaries) + 1 != column_count for boundaries in candidates):
+            return np.asarray(
+                [
+                    _fit_continuous_piecewise(self.log_prices, boundaries)[3]
+                    for boundaries in candidates
+                ],
+                dtype=float,
+            )
+
+        column_indexes = np.asarray(
+            [
+                (0, 1, *(2 + boundary for boundary in boundaries[1:-1]))
+                for boundaries in candidates
+            ],
+            dtype=np.intp,
+        )
+        gram = self._basis_gram[
+            column_indexes[:, :, None],
+            column_indexes[:, None, :],
+        ]
+        rhs = self._basis_rhs[column_indexes]
+        try:
+            coefficients = np.linalg.solve(gram, rhs[..., None])[..., 0]
+        except np.linalg.LinAlgError:
+            return np.asarray(
+                [
+                    _fit_continuous_piecewise(self.log_prices, boundaries)[3]
+                    for boundaries in candidates
+                ],
+                dtype=float,
+            )
+        return np.maximum(
+            self._response_sum_squares
+            - np.einsum("cp,cp->c", coefficients, rhs, optimize=True),
+            0.0,
+        )
+
+
 def recommended_max_segments(lookback_bars: int, max_segments_cap: int = 10) -> int:
     """Return the capped dashboard/production recommendation for a lookback."""
     if lookback_bars < 2 or max_segments_cap < 1:
@@ -130,6 +209,22 @@ def _continuous_design(size: int, boundaries: tuple[int, ...]) -> np.ndarray:
     return np.column_stack(columns)
 
 
+def _spline_sufficient_statistics(
+    log_prices: np.ndarray,
+) -> tuple[np.ndarray, np.ndarray]:
+    """Precompute cross-products for every discrete hinge position."""
+    size = len(log_prices)
+    scale = float(max(size - 1, 1))
+    x = np.arange(size, dtype=float) / scale
+    boundary_positions = np.arange(size + 1, dtype=float)
+    hinges = np.maximum(
+        x[:, None] - (boundary_positions[None, :] - 1.0) / scale,
+        0.0,
+    )
+    basis = np.column_stack((np.ones(size, dtype=float), x, hinges))
+    return basis.T @ basis, basis.T @ log_prices
+
+
 def _fit_continuous_piecewise(
     log_prices: np.ndarray,
     boundaries: tuple[int, ...],
@@ -151,33 +246,9 @@ def _fit_continuous_piecewise(
 def _batched_rss(
     log_prices: np.ndarray,
     candidates: list[tuple[int, ...]],
+    evaluator: _RssEvaluator | None = None,
 ) -> np.ndarray:
-    if not candidates:
-        return np.array([], dtype=float)
-    if len(candidates[0]) == 2:
-        return np.array([_fit_continuous_piecewise(log_prices, candidates[0])[3]])
-
-    size = len(log_prices)
-    scale = float(max(size - 1, 1))
-    x = np.arange(size, dtype=float) / scale
-    base = np.column_stack((np.ones(size, dtype=float), x))
-    knots = (np.asarray([row[1:-1] for row in candidates], dtype=float) - 1.0) / scale
-    hinges = np.maximum(x[None, :, None] - knots[:, None, :], 0.0)
-    repeated_base = np.broadcast_to(base, (len(candidates), size, 2))
-    designs = np.concatenate((repeated_base, hinges), axis=2)
-    gram = np.einsum("cnp,cnq->cpq", designs, designs, optimize=True)
-    rhs = np.einsum("cnp,n->cp", designs, log_prices, optimize=True)
-    try:
-        coefficients = np.linalg.solve(gram, rhs[..., None])[..., 0]
-    except np.linalg.LinAlgError:
-        return np.array(
-            [_fit_continuous_piecewise(log_prices, boundaries)[3] for boundaries in candidates]
-        )
-    return np.maximum(
-        float(np.dot(log_prices, log_prices))
-        - np.einsum("cp,cp->c", coefficients, rhs, optimize=True),
-        0.0,
-    )
+    return (evaluator or _RssEvaluator(log_prices)).evaluate(candidates)
 
 
 def _rank_boundary_pool(
@@ -185,13 +256,15 @@ def _rank_boundary_pool(
     candidates: Iterable[tuple[int, ...]],
     batch_size: int,
     limit: int,
+    evaluator: _RssEvaluator | None = None,
 ) -> tuple[list[tuple[float, tuple[int, ...]]], int]:
+    active_evaluator = evaluator or _RssEvaluator(log_prices)
     unique = sorted(set(candidates))
     ranked: list[tuple[float, tuple[int, ...]]] = []
     evaluated = 0
     for start in range(0, len(unique), batch_size):
         batch = unique[start : start + batch_size]
-        rss_values = _batched_rss(log_prices, batch)
+        rss_values = _batched_rss(log_prices, batch, active_evaluator)
         evaluated += len(batch)
         ranked.extend((float(rss), boundaries) for rss, boundaries in zip(rss_values, batch))
         ranked = sorted(ranked, key=lambda item: (item[0], item[1]))[:limit]
@@ -204,12 +277,14 @@ def _exact_search(
     min_segment_bars: int,
     config: SearchConfig,
     top_n: int,
+    evaluator: _RssEvaluator | None = None,
 ) -> _SearchOutcome | None:
     ranked, evaluated = _rank_boundary_pool(
         log_prices,
         _boundary_candidates(len(log_prices), segment_count, min_segment_bars),
         config.exhaustive_batch_size,
         top_n,
+        evaluator,
     )
     if not ranked:
         return None
@@ -303,6 +378,7 @@ def _single_boundary_refinement(
     initial: tuple[int, ...],
     min_segment_bars: int,
     config: SearchConfig,
+    evaluator: _RssEvaluator,
 ) -> tuple[tuple[int, ...], float, bool, int, int]:
     current = initial
     current_rss = _fit_continuous_piecewise(log_prices, current)[3]
@@ -325,6 +401,7 @@ def _single_boundary_refinement(
                 candidates,
                 config.exhaustive_batch_size,
                 1,
+                evaluator,
             )
             evaluated += count
             if ranked and _strictly_improves(
@@ -343,6 +420,7 @@ def _pair_refinement(
     initial: tuple[int, ...],
     min_segment_bars: int,
     config: SearchConfig,
+    evaluator: _RssEvaluator,
 ) -> tuple[tuple[int, ...], float, bool, int]:
     current = initial
     current_rss = _fit_continuous_piecewise(log_prices, current)[3]
@@ -369,6 +447,7 @@ def _pair_refinement(
             candidates,
             config.exhaustive_batch_size,
             1,
+            evaluator,
         )
         evaluated += count
         if ranked and _strictly_improves(
@@ -385,6 +464,7 @@ def _hybrid_search(
     min_segment_bars: int,
     previous_beam: tuple[tuple[int, ...], ...],
     config: SearchConfig,
+    evaluator: _RssEvaluator,
 ) -> _SearchOutcome | None:
     size = len(log_prices)
     expanded, evaluated = _rank_boundary_pool(
@@ -392,6 +472,7 @@ def _hybrid_search(
         _expanded_boundaries(previous_beam, size, min_segment_bars),
         config.exhaustive_batch_size,
         config.beam_width,
+        evaluator,
     )
     initial = [item[1] for item in expanded]
     initial.extend(
@@ -414,6 +495,7 @@ def _hybrid_search(
             seed,
             min_segment_bars,
             config,
+            evaluator,
         )
         evaluated += count
         total_passes += passes
@@ -423,6 +505,7 @@ def _hybrid_search(
                 boundaries,
                 min_segment_bars,
                 config,
+                evaluator,
             )
             evaluated += pair_count
             if moved:
@@ -432,6 +515,7 @@ def _hybrid_search(
                         boundaries,
                         min_segment_bars,
                         config,
+                        evaluator,
                     )
                 )
                 evaluated += post_count
@@ -570,6 +654,7 @@ def compute_adaptive_segmentation(
         return None, []
 
     log_prices = np.log(prices)
+    evaluator = _RssEvaluator(log_prices)
     feasible_max = min(max_segments, lookback_bars // min_segment_bars)
     candidates: list[tuple[float, int, _SearchOutcome]] = []
     diagnostics: list[dict[str, Any]] = []
@@ -583,6 +668,7 @@ def compute_adaptive_segmentation(
                 min_segment_bars,
                 search_config,
                 top_n=search_config.beam_width,
+                evaluator=evaluator,
             )
         else:
             outcome = _hybrid_search(
@@ -591,6 +677,7 @@ def compute_adaptive_segmentation(
                 min_segment_bars,
                 previous_beam,
                 search_config,
+                evaluator,
             )
         if outcome is None:
             continue

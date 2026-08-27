@@ -93,6 +93,8 @@ def test_pipeline_reads_canonical_source_and_upserts_result(monkeypatch) -> None
     progress = MagicMock()
     progress.add_task.return_value = 1
     monkeypatch.setattr(pipeline, "Progress", lambda *_columns: progress)
+    logger = MagicMock()
+    monkeypatch.setattr(pipeline, "log", logger)
 
     completed = pipeline.run_pivot_segmentation_pipeline(show_progress=True)
 
@@ -115,6 +117,16 @@ def test_pipeline_reads_canonical_source_and_upserts_result(monkeypatch) -> None
     progress.advance.assert_called_once_with(1)
     progress.start.assert_called_once_with()
     progress.stop.assert_called_once_with()
+    logger.info.assert_any_call(
+        "pivot_segmentation.symbol.done",
+        symbol="TEST",
+        lookbacks=[30],
+        snapshots=1,
+        segments=3,
+        progress="[1/1]",
+        completion="100.0%",
+        eta="0sec",
+    )
 
 
 def _source_summary(
@@ -264,11 +276,22 @@ def test_pipeline_discards_symbol_batch_when_one_lookback_fails(monkeypatch) -> 
             (output_summaries, output_segments)
         ),
     )
+    progress = MagicMock()
+    progress.add_task.return_value = 1
+    monkeypatch.setattr(pipeline, "Progress", lambda *_columns: progress)
 
-    completed = pipeline.run_pivot_segmentation_pipeline(snapshot_date)
+    completed = pipeline.run_pivot_segmentation_pipeline(
+        snapshot_date,
+        show_progress=True,
+    )
 
     assert completed == 1
     assert fetch_ohlcv.call_count == 2
     assert len(writes) == 1
     assert [row["symbol"] for row in writes[0][0]] == ["GOOD"]
     assert [row["lookback_bars"] for row in writes[0][0]] == [100]
+    progress.add_task.assert_called_once_with(
+        "Pivot segmentation: preparing",
+        total=2,
+    )
+    assert progress.advance.call_count == 2

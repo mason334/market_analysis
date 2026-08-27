@@ -1615,10 +1615,13 @@ market-analysis run-pivot-segmentation
 
 `run-adaptive-segmentation` 批量运行时按 symbol 显示当前处理标的、已处理数/总数、完成百分比和
 预计剩余时间；成功写库数量仍由命令结束信息单独报告。跳过或计算失败但继续执行的 symbol 也计入
-“已处理数”，避免进度条与实际循环位置不一致。
+“已处理数”，避免进度条与实际循环位置不一致。现有成功、跳过和失败 structlog 事件同时附加
+`progress=[72/191] completion=37.7% eta=3min56sec` 格式的人类可读字段，不新增独立 progress
+事件或 JSONL 协议。
 
-`run-pivot-segmentation` 使用相同的进度展示，并额外显示当前 lookback bars。其处理单位是一个
-`symbol/lookback_bars` 快照；默认目标为 250 bars，但新上市标的可能持久化 40～249 bars 的实际窗口。
+`run-pivot-segmentation` 使用相同的进度展示，并额外显示当前 lookback bars。由于同一 symbol 的
+全部 lookback 采用整体写入或整体丢弃语义，进度单位为 symbol；默认目标为 250 bars，但新上市标的
+可能持久化 40～249 bars 的实际窗口。lookback 计算日志保留诊断用途，只有 symbol 终态推进总进度。
 
 `run-pivot-segmentation` 读取指定日期所有已持久化的 `adaptive_segmentation_v3` summary/segments，
 包括 40～249 bars 的 fallback 快照，同时从 `market_data.daily_bars_split_adjusted` 读取同一
@@ -1934,3 +1937,81 @@ Dashboard 已同步增加“强制重新计算已有结果”开关，默认关�
 
 验证结果：`market_analysis` 完整 pytest 为 `159 passed`，本方案变更文件 Ruff 通过；未执行真实分段
 写入。
+
+## 22. 已实施：Adaptive Segmentation v3 等价加速
+
+### 22.1 方案元数据
+
+- **方案名称**：Adaptive Segmentation v3 等价加速方案
+- **方案编号**：`MA-AS-PERF-001`
+- **版本号**：`v1.0.1`
+- **状态**：已实施
+- **实施日期**：2026-08-21
+
+### 22.2 实现范围
+
+本次只优化单进程数值计算，不引入线程或进程并行。一次
+`compute_adaptive_segmentation()` 调用创建一个 RSS evaluator，并在所有固定分段数、beam expansion、
+单断点 refinement 和相邻双断点 refinement 之间复用：
+
+1. 为指定 log-close 窗口一次性构造截距、标准化时间和全部离散 hinge 位置组成的完整 basis；
+2. 一次性计算完整 basis 的 Gram 矩阵、basis 与 log-close 的交叉乘积及 log-close 平方和；
+3. 每个候选 boundaries 只索引其所需的 Gram 子矩阵和响应向量，再执行原有 normal-equation 求解；
+4. 以完整 boundaries tuple 为 key，在当前 symbol/lookback 内缓存 RSS；不同 symbol 或窗口之间不共享
+   响应相关缓存；
+5. 最终选中 boundaries 后仍调用原有 `np.linalg.lstsq()` 生成 fitted path、slopes 和最终 RSS。
+
+`candidates_evaluated` 继续表示搜索流程中的逻辑候选评估次数，不改为实际线性方程求解次数。因此历史
+审计字段语义、候选空间、搜索顺序、严格改善判定、BIC、tie-break、方法名和
+`adaptive_segmentation_v3` 计算版本均保持不变。
+
+### 22.3 等价性与性能验证
+
+使用 Git 中修改前的实现作为基线，对 3 组确定性 250-bar 合成路径执行完整 10 段上限、双断点开启的
+混合搜索。三组分别选择 7、6、10 段，逐 K 最佳 boundaries、最终分段、逻辑候选计数均完全一致，
+逐 K RSS 最大绝对差异为 0。三组基线合计 23.763 秒，优化后合计 2.186 秒，本机单进程加速约
+10.87 倍。该结果是本机合成路径基准，不替代真实 190-symbol 生产验收。
+
+测试结果：定向 adaptive segmentation 测试 `19 passed`，完整 pytest `165 passed`；本方案变更文件
+Ruff 通过。全仓 Ruff 仍报告实验 notebook 与归档策略目录中的 9 个既有问题，本方案未修改这些历史
+文件。
+
+### 22.4 investment_dashboard 影响
+
+本方案不修改数据库 schema、字段含义、主键、索引、查询返回列、CLI 名称、参数或输出格式，也不修改
+搜索配置默认值。`investment_dashboard` 无需同步修改；现有 3600 秒任务超时可以继续保留，待真实
+190-symbol 生产基准稳定后再单独评估是否调整。
+
+## 23. 已实施：Dashboard 批处理任务轻量进度反馈
+
+### 23.1 方案元数据
+
+- **方案名称**：Dashboard 批处理任务轻量进度反馈方案
+- **方案编号**：`MA-AS-PROGRESS-001`
+- **版本号**：`v1.3.3`
+- **状态**：已实施
+- **实施日期**：2026-08-21
+
+### 23.2 输出契约
+
+`run-adaptive-segmentation` 和 `run-pivot-segmentation` 保留 Rich 动态进度条，并在现有 symbol
+成功、跳过或失败终态日志上增加如下人类可读字段：
+
+```text
+progress=[72/191] completion=37.7% eta=3min56sec
+```
+
+ETA 少于一分钟时显示 `42sec`，超过一小时时显示 `1h03min12sec`，任务完成时显示 `0sec`。
+方案不新增统一 progress 事件、JSONL 协议或 Dashboard 日志解析器。Pivot 的进度单位由输入 snapshot
+改为 symbol，与同一 symbol 全部 lookback 整体写入或整体丢弃的事务语义保持一致。
+
+`market-data update` 的候选范围输出和 `Scan complete` 聚合摘要保持原样，只在实际增量抓取阶段增加
+Rich 进度条与逐 symbol 可读结果行。market_data 的 structlog 继续写入原有 JSON 日志文件，同时标准
+输出使用同一进度内容供 Dashboard terminal 实时显示。派生 full refresh 的既有输出不在本版范围内。
+
+### 23.3 验证与下游影响
+
+`market_analysis` 完整 pytest 为 `166 passed`，`market_data` 完整 pytest 为 `33 passed`，两项目本次
+变更文件的 Ruff 检查均通过。该方案不修改数据库 schema、计算版本、抓取范围、跳过条件、CLI 命令名
+或参数。`investment_dashboard` 无需修改代码；其非 TTY terminal 继续显示逐行日志，而 Rich 动态
+进度条只保证在真实 terminal 中呈现。

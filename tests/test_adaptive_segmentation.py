@@ -9,6 +9,7 @@ from market_analysis.indicators.adaptive_segmentation import (
     _best_boundaries,
     _boundary_candidates,
     _fit_continuous_piecewise,
+    _RssEvaluator,
     candidate_count,
     compute_adaptive_segmentation,
     compute_adaptive_segmentation_snapshots,
@@ -88,6 +89,45 @@ def test_batched_breakpoint_search_matches_direct_least_squares() -> None:
     expected_rss, expected_boundaries = min(direct)
     assert selected_boundaries == expected_boundaries
     assert selected_rss == pytest.approx(expected_rss, abs=1e-10)
+
+
+def test_sufficient_statistics_match_direct_least_squares() -> None:
+    rng = np.random.default_rng(20260821)
+    log_prices = 4.0 + np.cumsum(rng.normal(0.001, 0.02, 40))
+    candidates = [
+        (0, 8, 21, 40),
+        (0, 12, 27, 40),
+        (0, 17, 32, 40),
+    ]
+    evaluator = _RssEvaluator(log_prices)
+
+    actual = evaluator.evaluate(candidates)
+    expected = np.asarray(
+        [
+            _fit_continuous_piecewise(log_prices, boundaries)[3]
+            for boundaries in candidates
+        ]
+    )
+
+    assert actual == pytest.approx(expected, abs=1e-10)
+
+
+def test_rss_evaluator_memoizes_boundaries(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    log_prices = 4.0 + 0.01 * np.arange(30)
+    candidates = [(0, 10, 20, 30), (0, 12, 22, 30)]
+    evaluator = _RssEvaluator(log_prices)
+    expected = evaluator.evaluate(candidates)
+
+    def fail_if_recomputed(_: list[tuple[int, ...]]) -> np.ndarray:
+        raise AssertionError("cached boundaries should not be recomputed")
+
+    monkeypatch.setattr(evaluator, "_evaluate_uncached", fail_if_recomputed)
+
+    assert evaluator.evaluate([candidates[1], candidates[0], candidates[1]]) == pytest.approx(
+        expected[[1, 0, 1]]
+    )
 
 
 def test_segment_returns_cover_every_window_return_once() -> None:

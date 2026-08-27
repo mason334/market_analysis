@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from collections import defaultdict
 from datetime import date
+from time import monotonic
 from typing import Any
 
 import structlog
@@ -16,6 +17,7 @@ from market_analysis.db.queries import (
     upsert_pivot_segmentation_daily,
 )
 from market_analysis.indicators.pivot_segmentation import compute_pivot_segmentation
+from market_analysis.pipeline._progress import progress_log_fields
 
 log = structlog.get_logger(__name__)
 
@@ -68,14 +70,17 @@ def run_pivot_segmentation_pipeline(
             TextColumn("{task.description}"),
             BarColumn(),
             TaskProgressColumn(),
-            TextColumn("{task.completed:.0f}/{task.total:.0f} snapshots"),
+            TextColumn("{task.completed:.0f}/{task.total:.0f} symbols"),
             TimeRemainingColumn(),
         )
         if show_progress
         else None
     )
     progress_task = (
-        progress.add_task("Pivot segmentation: preparing", total=len(summaries))
+        progress.add_task(
+            "Pivot segmentation: preparing",
+            total=len(summaries_by_symbol),
+        )
         if progress is not None
         else None
     )
@@ -85,10 +90,14 @@ def run_pivot_segmentation_pipeline(
     symbols_failed = 0
     lookbacks_failed = 0
     snapshots_discarded = 0
+    progress_started_at = monotonic()
     if progress is not None:
         progress.start()
     try:
-        for symbol, symbol_summaries in summaries_by_symbol.items():
+        for processed, (symbol, symbol_summaries) in enumerate(
+            summaries_by_symbol.items(),
+            start=1,
+        ):
             ordered_summaries = sorted(
                 symbol_summaries,
                 key=lambda row: int(row["lookback_bars"]),
@@ -106,10 +115,14 @@ def run_pivot_segmentation_pipeline(
                     symbol=symbol,
                     lookbacks=lookbacks,
                     stage="fetch_ohlcv",
+                    **progress_log_fields(
+                        processed,
+                        len(summaries_by_symbol),
+                        monotonic() - progress_started_at,
+                    ),
                 )
                 if progress is not None and progress_task is not None:
-                    for _ in ordered_summaries:
-                        progress.advance(progress_task)
+                    progress.advance(progress_task)
                 continue
 
             computed_summaries: list[dict[str, Any]] = []
@@ -155,19 +168,14 @@ def run_pivot_segmentation_pipeline(
                         pivots=summary["pivot_count"],
                         segments=summary["segment_count"],
                     )
-                finally:
-                    if progress is not None and progress_task is not None:
-                        progress.advance(progress_task)
                 if failed_lookback is not None:
                     break
 
             if failed_lookback is not None:
                 symbols_failed += 1
                 snapshots_discarded += len(computed_summaries)
-                unprocessed_count = len(ordered_summaries) - len(computed_summaries) - 1
                 if progress is not None and progress_task is not None:
-                    for _ in range(unprocessed_count):
-                        progress.advance(progress_task)
+                    progress.advance(progress_task)
                 log.warning(
                     "pivot_segmentation.symbol.discarded",
                     symbol=symbol,
@@ -175,6 +183,11 @@ def run_pivot_segmentation_pipeline(
                     computed_lookbacks=[
                         int(row["lookback_bars"]) for row in computed_summaries
                     ],
+                    **progress_log_fields(
+                        processed,
+                        len(summaries_by_symbol),
+                        monotonic() - progress_started_at,
+                    ),
                 )
                 continue
 
@@ -191,17 +204,31 @@ def run_pivot_segmentation_pipeline(
                     symbol=symbol,
                     lookbacks=lookbacks,
                     stage="upsert",
+                    **progress_log_fields(
+                        processed,
+                        len(summaries_by_symbol),
+                        monotonic() - progress_started_at,
+                    ),
                 )
+                if progress is not None and progress_task is not None:
+                    progress.advance(progress_task)
                 continue
 
             symbols_completed += 1
             snapshots_written += len(computed_summaries)
+            if progress is not None and progress_task is not None:
+                progress.advance(progress_task)
             log.info(
                 "pivot_segmentation.symbol.done",
                 symbol=symbol,
                 lookbacks=lookbacks,
                 snapshots=len(computed_summaries),
                 segments=len(computed_segments),
+                **progress_log_fields(
+                    processed,
+                    len(summaries_by_symbol),
+                    monotonic() - progress_started_at,
+                ),
             )
     finally:
         if progress is not None:

@@ -202,6 +202,11 @@ log 口径，不提前乘 100 或舍入；百分比展示由下游转换。
 全域优化和相邻双断点局部优化，再使用 BIC 选择分段数。每一段不少于
 `min_segment_bars`，因此拐点不需要落在固定窗口边界上。
 
+单次 symbol/lookback 计算会复用完整 linear-spline basis 的 Gram 矩阵与响应交叉乘积，并按完整
+boundaries 缓存已计算 RSS。该实现只消除重复矩阵构造和重复候选求解，不改变候选集合、搜索顺序、
+beam/refinement、BIC、tie-break 或最终 `np.linalg.lstsq()` 拟合，因此计算口径继续为
+`adaptive_segmentation_v3`。
+
 分段仍使用 `[start, end)` 边界；后一段的路径指标包含 `start - 1 -> start` 的进入收益，
 保证各段 `actual_log_return` 之和等于整个窗口的实际 log return。每段另存最大单日变化
 `largest_move_log_return`、发生日期/bar 索引及其占该段绝对路径的比例，便于区分持续趋势
@@ -230,6 +235,10 @@ log 口径，不提前乘 100 或舍入；百分比展示由下游转换。
 `run-pivot-segmentation` 按 symbol 聚合同一日期的全部实际 lookback，同一 symbol 只读取一次
 OHLCV；所有 lookback 均计算成功后，在单次事务中整体写入。任一 lookback 失败时，该 symbol 本轮
 不更新，避免部分新结果与旧结果混合；其他 symbol 继续处理。
+
+两个批处理命令在真实终端保留 Rich 动态进度条，并在成功、跳过或失败的 symbol 结果日志中附加
+`progress=[72/191] completion=37.7% eta=3min56sec` 一类的人类可读进度。Dashboard 后台调用时
+Rich 不依赖 TTY 动态刷新，页面 terminal 仍可通过逐行 structlog 结果日志观察进度。
 
 ### 长窗口趋势形态
 

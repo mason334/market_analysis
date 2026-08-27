@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from datetime import date
 from math import isclose
+from time import monotonic
 from typing import Any
 
 import structlog
@@ -22,6 +23,7 @@ from market_analysis.indicators.adaptive_segmentation import (
     normalize_search_config,
     recommended_max_segments,
 )
+from market_analysis.pipeline._progress import progress_log_fields
 
 log = structlog.get_logger(__name__)
 
@@ -206,10 +208,11 @@ def run_adaptive_segmentation_pipeline(
     fallback_symbols = 0
     insufficient_symbols = 0
     failed_symbols = 0
+    progress_started_at = monotonic()
     if progress is not None:
         progress.start()
     try:
-        for symbol in symbols:
+        for processed, symbol in enumerate(symbols, start=1):
             if progress is not None and progress_task is not None:
                 progress.update(
                     progress_task,
@@ -230,6 +233,11 @@ def run_adaptive_segmentation_pipeline(
                         symbol=symbol,
                         available=available_bars,
                         minimum=min_fallback_bars,
+                        **progress_log_fields(
+                            processed,
+                            len(symbols),
+                            monotonic() - progress_started_at,
+                        ),
                     )
                     continue
                 if effective_lookbacks != lookbacks:
@@ -267,6 +275,11 @@ def run_adaptive_segmentation_pipeline(
                         symbol=symbol,
                         date=str(snapshot_date),
                         lookbacks=effective_lookbacks,
+                        **progress_log_fields(
+                            processed,
+                            len(symbols),
+                            monotonic() - progress_started_at,
+                        ),
                     )
                     continue
                 df = fetch_adaptive_close_window(
@@ -286,7 +299,15 @@ def run_adaptive_segmentation_pipeline(
                     upsert_trend_segmentation_daily(summaries, segments)
                 except Exception:
                     failed_symbols += 1
-                    log.exception("adaptive_segmentation.symbol.error", symbol=symbol)
+                    log.exception(
+                        "adaptive_segmentation.symbol.error",
+                        symbol=symbol,
+                        **progress_log_fields(
+                            processed,
+                            len(symbols),
+                            monotonic() - progress_started_at,
+                        ),
+                    )
                     continue
                 completed += 1
                 log.info(
@@ -294,6 +315,11 @@ def run_adaptive_segmentation_pipeline(
                     symbol=symbol,
                     lookbacks=len(summaries),
                     segments=len(segments),
+                    **progress_log_fields(
+                        processed,
+                        len(symbols),
+                        monotonic() - progress_started_at,
+                    ),
                 )
             finally:
                 if progress is not None and progress_task is not None:
