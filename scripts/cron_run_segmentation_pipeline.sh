@@ -106,6 +106,50 @@ HOSTNAME_VALUE="$(hostname)"
 # 邮件通知函数
 # ---------------------------------------------------------------------------
 
+render_mail_summary() {
+    local subject="$1"
+    local error_lines
+
+    printf 'Segmentation Pipeline Summary\n'
+    printf '\n'
+    printf 'Notification: %s\n' "${subject}"
+    printf 'Host: %s\n' "${HOSTNAME_VALUE}"
+    printf 'Log: %s\n' "${LOG_FILE}"
+    printf '\n'
+    printf 'Summary events:\n'
+
+    # 只选择任务级和步骤级汇总，不把逐 symbol 进度或分段明细带入邮件。
+    awk '
+        /^=== .*Segmentation pipeline started ===$/ ||
+        /^=== .*Pipeline (SUCCESS|FAILED|INTERRUPTED) ===$/ ||
+        /^=== .*Pipeline interrupted:/ ||
+        /^=== .*Pipeline skipped ===$/ ||
+        /^=== .*Step [12]\/2: .* (STARTED|SUCCESS|FAILED|SKIPPED|INTERRUPTED).*===$/ ||
+        /adaptive_segmentation\.(start|done)[[:space:]]/ ||
+        /pivot_segmentation\.(start|done)[[:space:]]/ ||
+        /^Done\./ ||
+        /^Exit code:/ ||
+        /^Adaptive exit code:/ ||
+        /^Pivot exit code:/ ||
+        /^Reason:/ ||
+        /^Pipeline failed:/ {
+            print
+        }
+    ' "${LOG_FILE}"
+
+    # 成功邮件只包含汇总。失败或中断时补充少量结构化错误，详细上下文仍查看完整日志。
+    case "${subject}" in
+        "[FAILED]"*|"[INTERRUPTED]"*)
+            error_lines="$(grep -E '\[error[[:space:]]*\]' "${LOG_FILE}" | tail -n 10)"
+            if [ -n "${error_lines}" ]; then
+                printf '\n'
+                printf 'Recent errors (up to 10):\n'
+                printf '%s\n' "${error_lines}"
+            fi
+            ;;
+    esac
+}
+
 send_mail() {
     local subject="$1"
 
@@ -128,8 +172,8 @@ send_mail() {
         printf 'Content-Type: text/plain; charset=UTF-8\n'
         printf '\n'
 
-        # 分段过程可能产生大量进度日志，邮件只附带最后 200 行，避免正文过大。
-        tail -n 200 "${LOG_FILE}"
+        # 邮件只发送任务级摘要；逐 symbol 进度和分段明细仍完整保存在 LOG_FILE。
+        render_mail_summary "${subject}"
     } | "${MSMTP_BIN}" "${MAIL_TO}" || {
         # 邮件发送失败不覆盖分析任务本身的退出状态。
         log_line "Mail delivery failed"
