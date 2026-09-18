@@ -13,8 +13,11 @@
 
 本项目只提供描述性行情分析，不提供交易策略、买卖建议、持仓管理、自动下单或策略回测。
 
-## 开发文档
+## 自适应分段+pivot精炼分段 趋势识别 结果图示
+![两阶段趋势识别](docs/images/pivot-segmentation-example.png)
+这个图表通过下游investment_dashboard网页入口，读取数据库内存储的趋势识别结果生成
 
+## 开发文档
 
 - `docs/adaptive_segmentation_development.md`：自适应分段与 Pivot 精炼的设计、实现和历史决策记录。
 - `docs/trend_pattern_v4_metric_spec.md`：已经暂停的 trend-pattern v4 历史规格，仅供研究追溯。
