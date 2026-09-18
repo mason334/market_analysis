@@ -31,9 +31,6 @@ class Settings(BaseSettings):
     # Indicator params — loaded from settings.yaml
     indicators: dict[str, Any] = Field(default_factory=dict)
 
-    # Strategy params — loaded from settings.yaml. Kept for backward-compatible config.
-    strategies: dict[str, Any] = Field(default_factory=dict)
-
     # Pipeline
     pipeline: dict[str, Any] = Field(default_factory=dict)
 

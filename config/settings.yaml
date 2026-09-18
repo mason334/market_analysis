@@ -1,27 +1,4 @@
 indicators:
-  support_resistance:
-    swing_order: 3
-    cluster_pct: 1.5
-    min_touches: 2
-    min_span_days: 10
-    max_levels: 10
-    max_dist_pct: 20
-    extreme_order: 60
-    extreme_pct: 5.0
-    lookback_window: 500
-    atr_period: 14
-    watch_atr_mult: 1.5
-    warn_atr_mult: 0.5
-    breakout_window: 5
-
-  trend:
-    windows:
-      - {label: 5d, far_bars: 5, near_bars: 0}
-      - {label: 10d, far_bars: 10, near_bars: 0}
-      - {label: 20d, far_bars: 20, near_bars: 0}
-      - {label: 40d, far_bars: 40, near_bars: 0}
-      - {label: 60d, far_bars: 60, near_bars: 0}
-
   adaptive_segmentation:
     lookbacks: [250]
     min_fallback_bars: 40
@@ -46,110 +23,19 @@ indicators:
     search_radius_bars: 5
     min_segment_bars: 5
 
-  trend_pattern:
-    # 单段方向识别的最低拟合 log return 绝对值。
-    # fitted_log_return = 分段拟合 log-price 终点 - 起点；0.02 约等于 2.02% 简单收益。
-    # 低于该值的分段直接记为 flat；达到后还必须满足下方 R² 或波动率调整趋势条件之一。
-    min_abs_fitted_log_return: 0.02
-
-    # 单段拟合线性度下限，取值 0–1。
-    # linearity_r2 = 1 - RSS / TSS，其中 RSS 为实际 log-price 与连续分段拟合值的残差平方和，
-    # TSS 为实际 log-price 相对段内均值的总平方和；越接近 1 表示段内路径越接近拟合直线。
-    min_linearity_r2: 0.35
-
-    # 单段波动率调整趋势绝对值下限。
-    # vol_adjusted_trend = log_slope_per_bar * sqrt(段内收益间隔数) / 日度 log return 标准差。
-    # 在 fitted_log_return 已达标后，linearity_r2 或 abs(vol_adjusted_trend) 任一达标，
-    # 该段才按 fitted_log_return 的正负识别为 up 或 down，否则识别为 flat。
-    min_abs_vol_adjusted_trend: 0.75
-
-    # 区间路径的最大净运动/总运动比例，取值 (0, 1]。
-    # net_to_gross = abs(sum(各段 fitted_log_return)) / sum(abs(各段 fitted_log_return))。
-    # 有至少 3 个有效方向 leg 且该比例不高于此值时，优先按 contracting、expanding
-    # 或 stable range 分类；比例越低表示上下运动抵消越明显。
-    range_net_to_gross_max: 0.35
-
-    # double-top-like / double-bottom-like 两个参考摆动振幅的最大相对差异容忍度，取值 [0, 1)。
-    # relative_difference = abs(abs(left) - abs(right)) / max(abs(left), abs(right))；
-    # 只有 relative_difference <= tolerance，两个参考摆动才视为幅度相似。
-    swing_similarity_tolerance: 0.25
-
-    # 收敛/扩张区间相邻摆动振幅的最小变化比例，取值 (0, 1)。
-    # 至少需要 3 个有效方向 leg；contracting 要求每个后续振幅 <= 前一振幅 * (1 - 此值)，
-    # expanding 要求每个后续振幅 >= 前一振幅 * (1 + 此值)。
-    swing_amplitude_change_min: 0.15
-
-    # double-top-like / double-bottom-like 最后确认 leg 相对参考摆动的最低振幅比例，取值 (0, 1]。
-    # confirmation_strength = 最后确认 leg 振幅 /
-    #   (max(两个参考摆动振幅) * double_test_confirmation_ratio)；
-    # 只有 confirmation_strength >= 1，且摆动相似度同时达标，才识别为 double test。
-    double_test_confirmation_ratio: 0.50
-
-  trend_pattern_v4:
-    # v4 独立维护 effective-leg 过滤阈值，不继承 trend_pattern_v3 配置。
-    min_abs_fitted_log_return: 0.02
-    min_linearity_r2: 0.35
-    min_abs_vol_adjusted_trend: 0.75
-
-    # 1～4 effective legs 的方向无关结构分类。
-    # 连续两个同类 fitted pivot 的相对差异不超过该值时记为 retest；
-    # 超出容差后，当前 leg 振幅较小记为 short_of，较大记为 break。
-    pivot_retest_tolerance: 0.25
-
-# Backward-compatible alias for older code paths and saved prefs.
-strategies:
-  support_resistance:
-    swing_order: 3
-    cluster_pct: 1.5
-    min_touches: 2
-    min_span_days: 10
-    max_levels: 10
-    max_dist_pct: 20
-    extreme_order: 60
-    extreme_pct: 5.0
-    lookback_window: 500
-    atr_period: 14
-    watch_atr_mult: 1.5
-    warn_atr_mult: 0.5
-    breakout_window: 5
-
 pipeline:
-  min_bars: 40
   source: tiingo
 
 validation:
   adaptive_segmentation:
-    # 默认验证样本；CLI 的 --symbols 会覆盖此列表。不存在的 ticker 会记录 warning 并跳过。
     symbols: [SPY, QQQ, IBIT, GLD, XLE, AAPL, MSFT, NVDA, TSLA]
-
-    # 局部稳定性验证的基准截面偏移（交易 bars）。0 表示截止日期的最新有效交易日；
-    # 10/20/... 表示分别从该位置向前移除对应数量的最新 bars，以覆盖不同历史环境。
     anchor_offsets: [0, 10, 20, 30, 40]
-
-    # 每个基准截面与 base + step 的截面组成一对；默认 2 bars 小于所有候选最短分段，
-    # 用于测试少量输入变化下的断点集合稳定性，避免 10 bars 新信息形成完整新分段。
     anchor_comparison_step_bars: 2
-
-    # 完整网格或第一阶段扫描使用的 BIC 复杂度惩罚候选；越大越偏向较少分段。
     bic_penalty_grid: [1.5, 2.0, 3.0, 4.0, 5.0]
-
-    # 候选最短分段长度（每段拥有的最少 observations/bars）。
     min_segment_bars_grid: [5, 7, 10]
-
-    # 候选最大分段数量；当前穷举算法不建议在 60 bars 窗口中轻易提高到 5 以上。
     max_segments_grid: [3, 4]
-
-    # 主断点匹配容差（交易 bars）；用于 local_breakpoint_set_stability 诊断，不参与参数排名。
     breakpoint_tolerance_bars: 2
-
-    # 容差敏感度列表；只增加稳定性对照列，不改变分段、不进入 parameter_key。
     breakpoint_tolerance_sensitivity_bars: [2, 3]
-
-    # 分阶段模式第一阶段保留的 BIC penalty 数量；当前生产 penalty 始终额外保留。
     top_penalties: 2
-
-    # 第二阶段保留的 penalty + min_segment_bars 组合数量，再展开 max_segments 复验。
     top_parameter_sets: 4
-
-    # HTML 中绘制详细分段图的排名候选数量；当前生产参数不在其中时会额外加入。
     chart_parameter_sets: 3

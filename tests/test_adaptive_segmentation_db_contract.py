@@ -149,6 +149,14 @@ def test_schema_creates_adaptive_summary_and_detail_tables(monkeypatch) -> None:
     assert "ADD COLUMN IF NOT EXISTS fitted_anchor_log_price" in statements
     assert "trend_segmentation_daily_date_lookback_idx" in statements
     assert "trend_segment_daily_symbol_date_idx" in statements
+    for retired_table in (
+        "support_resistance_daily",
+        "trend_daily",
+        "trend_pattern_daily",
+        "trend_pattern_v4_daily",
+        "sector_heat_daily",
+    ):
+        assert retired_table not in statements
 
 
 def test_adaptive_summary_snapshot_returns_requested_and_actual_lookbacks(

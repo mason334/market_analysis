@@ -1,5 +1,8 @@
 # 自适应分段算法开发记录
 
+> 本文档包含早期 `adaptive_trend` 命名以及已暂停的 trend-pattern v3/v4 下游实验记录；
+> 这些内容用于解释历史设计演进，不代表当前生产模块或接口。
+
 > 文档状态：已实施
 > 当前初分段口径：`adaptive_segmentation_v3`
 > 当前初分段方法：`continuous_piecewise_log_linear_deterministic_hybrid_bic`
