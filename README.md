@@ -348,5 +348,8 @@ python -m pytest
 
 ## License
 
-当前仓库尚未授予 open-source license。仓库公开可见不等于允许复制、修改或再分发；在正式选择并添加
-license 之前，相关权利仍由版权持有人保留。
+本项目采用 [GNU General Public License v3.0](LICENSE)（GPL-3.0）授权。
+
+你可以在遵守 GPLv3 条款的前提下使用、研究、修改和再分发本项目。分发本项目或其衍生作品时，
+应继续采用 GPLv3、保留版权与许可声明，并向接收者提供相应源代码。完整条款见仓库根目录的
+[`LICENSE`](LICENSE) 文件。
