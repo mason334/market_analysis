@@ -1,6 +1,8 @@
 # market_analysis
 
-`market_analysis` 是一个面向股票与 ETF 日线数据的 Python 行情分析后端，核心功能是完成两阶段价格路径分段：
+`market_analysis` 是一个面向股票与 ETF 日线数据的 Python 行情分析后端，核心功能是**将K线路径识别为具有明确趋势的分段行情，帮助用户识别市场趋势**
+
+通过完成两阶段价格路径分段算法实现上述目标：
 
 1. **自适应初分段（Adaptive Segmentation）**：在 log close 路径上选择连续的分段线性模型。
 2. **Pivot 精炼分段（Pivot Refinement）**：把初始内部断点调整到确定性的局部 close Pivot，并对各段独立重新拟合。
@@ -12,6 +14,7 @@
 本项目只提供描述性行情分析，不提供交易策略、买卖建议、持仓管理、自动下单或策略回测。
 
 ## 文档
+
 
 - `docs/adaptive_segmentation_development.md`：自适应分段与 Pivot 精炼的设计、实现和历史决策记录。
 - `docs/trend_pattern_v4_metric_spec.md`：已经暂停的 trend-pattern v4 历史规格，仅供研究追溯。
