@@ -11,6 +11,14 @@
 
 本项目只提供描述性行情分析，不提供交易策略、买卖建议、持仓管理、自动下单或策略回测。
 
+## 文档
+
+- `docs/adaptive_segmentation_development.md`：自适应分段与 Pivot 精炼的设计、实现和历史决策记录。
+- `docs/trend_pattern_v4_metric_spec.md`：已经暂停的 trend-pattern v4 历史规格，仅供研究追溯。
+
+README、开发文档和代码注释应随当前架构与接口同步维护。历史设计记录如果包含已经删除的路径或命令，
+必须明确标注为历史内容，避免与当前生产行为混淆。
+
 ## 项目边界
 
 | 维度 | 说明 |
@@ -331,14 +339,6 @@ python -m pytest
 - 数据库查询与 upsert 契约；
 - 单标的预览和参数评估；
 - CLI 参数传递与进度辅助函数。
-
-## 文档
-
-- `docs/adaptive_segmentation_development.md`：自适应分段与 Pivot 精炼的设计、实现和历史决策记录。
-- `docs/trend_pattern_v4_metric_spec.md`：已经暂停的 trend-pattern v4 历史规格，仅供研究追溯。
-
-README、开发文档和代码注释应随当前架构与接口同步维护。历史设计记录如果包含已经删除的路径或命令，
-必须明确标注为历史内容，避免与当前生产行为混淆。
 
 ## License
 
