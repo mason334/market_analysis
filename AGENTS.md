@@ -46,15 +46,15 @@ market_analysis/
 │   │   ├── __init__.py
 │   │   ├── queries.py
 │   │   └── schema.py
-│   ├── indicators/
+│   ├── segmentation/
 │   │   ├── adaptive_segmentation.py
 │   │   └── pivot_segmentation.py
 │   └── pipeline/
 │       ├── _progress.py
-│       ├── compute_adaptive_segmentation.py
+│       ├── preview_adaptive_segmentation.py
 │       ├── run_adaptive_segmentation.py
 │       ├── run_pivot_segmentation.py
-│       └── validate_adaptive_segmentation.py
+│       └── evaluate_adaptive_segmentation.py
 └── tests/
 ```
 
@@ -108,13 +108,13 @@ market-analysis validate-adaptive-segmentation --date 2026-09-18
 ## 代码分层
 
 ```text
-cli → pipeline → indicators + db
-indicators → 无项目内部依赖（纯计算）
+cli → pipeline → segmentation + db
+segmentation → 无项目内部依赖（纯计算）
 db → 只负责连接和 SQL，不依赖 pipeline
 config → 可被 cli / pipeline / db 使用
 ```
 
-指标计算函数不得连接数据库、读 `.env`、写文件或发网络请求。pipeline 负责读取、计算编排和
+分段计算函数不得连接数据库、读 `.env`、写文件或发网络请求。pipeline 负责读取、计算编排和
 写入。不得新增策略注册表或交易信号事件表。
 
 ## 与 investment_dashboard 的关系
@@ -145,12 +145,17 @@ config → 可被 cli / pipeline / db 使用
 - 数学公式必须定义每个字母、下标、单位、数据口径和窗口。
 - 数据库输出、下游查询接口或 CLI 变化必须单独说明 `investment_dashboard` 是否需要同步修改。
 
-正式方案必须列出：
+## 方案命名与版本管理
 
-- **方案名称**
-- **方案编号**
-- **版本号**：`vMAJOR.MINOR.PATCH`
-- **状态**
+当回复中给出可供后续修改或执行的正式方案、设计方案、技术方案或实施计划时，必须明确列出：
 
-不改变目标和结构的修订增加 PATCH；向后兼容的重要扩展增加 MINOR；不兼容变更或核心口径变化
-增加 MAJOR。实施交付必须注明实际执行的方案编号和版本号。
+- **方案名称**：便于人阅读和讨论的名称。
+- **方案编号**：稳定、简短、可引用的标识；同一方案后续修订继续使用同一编号。
+- **版本号**：使用 `vMAJOR.MINOR.PATCH` 语义化格式；首次正式方案默认从 `v1.0.0` 开始。
+- **状态**：例如“提议”“已确认”“执行中”“已实施”或“已废弃”。
+
+版本递增规则：不改变目标和结构的文字或小参数修订增加 `PATCH`；向后兼容的功能、范围或重要
+设计扩展增加 `MINOR`；不兼容变更、核心口径变化或整体替代原方案增加 `MAJOR`。不得在发生实质
+变化后继续沿用原版本号。每次重述、比较或修改方案时都应再次给出上述四项信息，不依赖读者回看
+前文。若用户随后要求按方案实施，最终交付必须注明实际执行的方案编号和版本号。普通问答、故障
+诊断、状态汇报或不构成正式方案的简短建议不强制使用该格式。

@@ -4,7 +4,7 @@ import numpy as np
 import pandas as pd
 import pytest
 
-from market_analysis.indicators.adaptive_segmentation import (
+from market_analysis.segmentation.adaptive_segmentation import (
     DEFAULT_LOOKBACKS,
     _best_boundaries,
     _boundary_candidates,

@@ -1,3 +1,9 @@
+"""提供单只标的自适应分段的只读预览流程。
+
+本模块读取指定标的的行情数据，按调用参数执行一次自适应分段，并返回摘要、
+分段明细、拟合曲线和耗时；结果供 JSON CLI 使用，不写入分析数据库。
+"""
+
 from __future__ import annotations
 
 from datetime import date
@@ -6,7 +12,7 @@ from typing import Any
 
 from market_analysis.config import settings
 from market_analysis.db.queries import fetch_ohlcv
-from market_analysis.indicators.adaptive_segmentation import (
+from market_analysis.segmentation.adaptive_segmentation import (
     compute_adaptive_segmentation,
     reconstruct_adaptive_fit,
 )

@@ -1,3 +1,9 @@
+"""评估自适应分段参数与历史稳定性并生成只读报告。
+
+本模块对选定标的、历史锚点和参数组合执行分段计算，汇总拟合质量、复杂度风险与
+断点稳定性，输出 CSV、交互图表和 HTML 报告；评估过程不修改生产快照表。
+"""
+
 from __future__ import annotations
 
 from dataclasses import dataclass
@@ -16,7 +22,7 @@ from rich.progress import BarColumn, Progress, TaskProgressColumn, TextColumn, T
 
 from market_analysis.config import settings
 from market_analysis.db.queries import fetch_ohlcv
-from market_analysis.indicators.adaptive_segmentation import (
+from market_analysis.segmentation.adaptive_segmentation import (
     compute_adaptive_segmentation,
     recommended_max_segments,
     reconstruct_adaptive_fit,

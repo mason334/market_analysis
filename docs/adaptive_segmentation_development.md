@@ -28,7 +28,7 @@
 
 ### 2.1 已实现：`adaptive_segmentation_v3` 与 `pivot_refined_segmentation_v3`
 
-当前 `src/market_analysis/indicators/adaptive_segmentation.py` 已实现：
+当前 `src/market_analysis/segmentation/adaptive_segmentation.py` 已实现：
 
 - 默认目标为 250 bars；历史不足 250 但至少 40 bars 时按实际可用数量 fallback；
 - 候选数不超过预算时执行分批精确穷举；
@@ -1629,7 +1629,7 @@ market-analysis run-pivot-segmentation
 `run-pivot-segmentation` 读取指定日期所有已持久化的 `adaptive_segmentation_v3` summary/segments，
 包括 40～249 bars 的 fallback 快照，同时从 `market_data.daily_bars_split_adjusted` 读取同一
 symbol、date 和实际 `lookback_bars` 数量的 close，不在
-`indicators/` 内连接数据库。
+`segmentation/` 内连接数据库。
 
 单标的诊断命令为：
 

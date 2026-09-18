@@ -1,12 +1,12 @@
-"""Pure calculations for adaptive and pivot segmentation."""
+"""提供自适应初分段与 Pivot 精炼的纯计算实现。"""
 
-from market_analysis.indicators.adaptive_segmentation import (
+from market_analysis.segmentation.adaptive_segmentation import (
     compute_adaptive_segmentation,
     compute_adaptive_segmentation_snapshots,
     recommended_max_segments,
     reconstruct_adaptive_fit,
 )
-from market_analysis.indicators.pivot_segmentation import compute_pivot_segmentation
+from market_analysis.segmentation.pivot_segmentation import compute_pivot_segmentation
 
 __all__ = [
     "compute_adaptive_segmentation",

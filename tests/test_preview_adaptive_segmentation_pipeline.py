@@ -3,7 +3,7 @@ from __future__ import annotations
 import numpy as np
 import pandas as pd
 
-from market_analysis.pipeline import compute_adaptive_segmentation
+from market_analysis.pipeline import preview_adaptive_segmentation
 
 
 def test_single_symbol_pipeline_returns_dashboard_json_payload(monkeypatch) -> None:
@@ -19,12 +19,12 @@ def test_single_symbol_pipeline_returns_dashboard_json_payload(monkeypatch) -> N
         index=index,
     )
     monkeypatch.setattr(
-        compute_adaptive_segmentation,
+        preview_adaptive_segmentation,
         "fetch_ohlcv",
         lambda *_args, **_kwargs: frame,
     )
 
-    result = compute_adaptive_segmentation.compute_adaptive_segmentation_for_symbol(
+    result = preview_adaptive_segmentation.compute_adaptive_segmentation_for_symbol(
         "test",
         lookback_bars=40,
         min_segment_bars=5,

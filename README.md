@@ -39,8 +39,8 @@ investment_dashboard / Market Snapshot
 The dependency direction is deliberately small:
 
 ```text
-cli -> pipeline -> indicators + db
-indicators -> pandas/numpy only
+cli -> pipeline -> segmentation + db
+segmentation -> pandas/numpy only
 db -> PostgreSQL connections and SQL
 ```
 
@@ -63,15 +63,15 @@ market_analysis/
 │   │   ├── __init__.py
 │   │   ├── queries.py
 │   │   └── schema.py
-│   ├── indicators/
+│   ├── segmentation/
 │   │   ├── adaptive_segmentation.py
 │   │   └── pivot_segmentation.py
 │   └── pipeline/
 │       ├── _progress.py
-│       ├── compute_adaptive_segmentation.py
+│       ├── preview_adaptive_segmentation.py
 │       ├── run_adaptive_segmentation.py
 │       ├── run_pivot_segmentation.py
-│       └── validate_adaptive_segmentation.py
+│       └── evaluate_adaptive_segmentation.py
 └── tests/
 ```
 

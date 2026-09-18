@@ -6,7 +6,7 @@ import numpy as np
 import pandas as pd
 
 from market_analysis.config import settings
-from market_analysis.pipeline import validate_adaptive_segmentation as validation
+from market_analysis.pipeline import evaluate_adaptive_segmentation as validation
 
 
 def _frame(size: int = 24) -> pd.DataFrame:

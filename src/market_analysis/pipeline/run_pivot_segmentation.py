@@ -1,3 +1,9 @@
+"""基于自适应初分段快照批量生成并持久化 Pivot 精炼结果。
+
+本模块读取指定日期已经持久化的自适应分段及对应 close 行情，调用纯 Pivot 精炼算法，
+并按标的原子写入 Pivot 摘要和分段明细；同时负责异常隔离、日志和进度展示。
+"""
+
 from __future__ import annotations
 
 from collections import defaultdict
@@ -16,8 +22,8 @@ from market_analysis.db.queries import (
     fetch_trend_segmentation_snapshot,
     upsert_pivot_segmentation_daily,
 )
-from market_analysis.indicators.pivot_segmentation import compute_pivot_segmentation
 from market_analysis.pipeline._progress import progress_log_fields
+from market_analysis.segmentation.pivot_segmentation import compute_pivot_segmentation
 
 log = structlog.get_logger(__name__)
 

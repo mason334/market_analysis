@@ -104,7 +104,7 @@ def compute_adaptive_segmentation_cmd(
     target_date: str = typer.Option("", "--date", help="Optional end date YYYY-MM-DD."),
 ) -> None:
     """Compute one read-only adaptive segmentation result and emit JSON."""
-    from market_analysis.pipeline.compute_adaptive_segmentation import (
+    from market_analysis.pipeline.preview_adaptive_segmentation import (
         compute_adaptive_segmentation_for_symbol,
     )
 
@@ -140,7 +140,7 @@ def validate_adaptive_segmentation(
     ),
 ) -> None:
     """Generate a read-only adaptive-segmentation validation report."""
-    from market_analysis.pipeline.validate_adaptive_segmentation import (
+    from market_analysis.pipeline.evaluate_adaptive_segmentation import (
         run_adaptive_segmentation_validation,
     )
 

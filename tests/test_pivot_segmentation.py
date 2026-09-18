@@ -6,7 +6,7 @@ import numpy as np
 import pandas as pd
 import pytest
 
-from market_analysis.indicators.pivot_segmentation import (
+from market_analysis.segmentation.pivot_segmentation import (
     classify_segment_direction,
     compute_pivot_segmentation,
     merge_classified_segments,

@@ -1,3 +1,9 @@
+"""提供分段批处理共用的进度日志字段。
+
+本模块把已处理数量、完成比例和预计剩余时间转换为稳定的人类可读文本，
+供自适应分段与 Pivot 精炼 pipeline 的 structlog 事件复用。
+"""
+
 from __future__ import annotations
 
 

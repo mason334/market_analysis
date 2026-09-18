@@ -1,3 +1,9 @@
+"""批量生成并持久化自适应初分段快照。
+
+本模块确定生产标的与有效回看窗口，检查已持久化结果以支持断点续跑，调用纯分段算法，
+并将完整的摘要和分段明细写入数据库；同时负责窗口回退、强制重算、日志和进度展示。
+"""
+
 from __future__ import annotations
 
 from datetime import date
@@ -16,14 +22,14 @@ from market_analysis.db.queries import (
     fetch_segmentation_analysis_symbols,
     upsert_trend_segmentation_daily,
 )
-from market_analysis.indicators.adaptive_segmentation import (
+from market_analysis.pipeline._progress import progress_log_fields
+from market_analysis.segmentation.adaptive_segmentation import (
     ADAPTIVE_SEGMENTATION_CALCULATION_VERSION,
     ADAPTIVE_SEGMENTATION_METHOD,
     compute_adaptive_segmentation_snapshots,
     normalize_search_config,
     recommended_max_segments,
 )
-from market_analysis.pipeline._progress import progress_log_fields
 
 log = structlog.get_logger(__name__)
 
