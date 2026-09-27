@@ -23,11 +23,14 @@ from market_analysis.db.queries import (
     upsert_pivot_segmentation_daily,
 )
 from market_analysis.pipeline._progress import progress_log_fields
+from market_analysis.segmentation.adaptive_segmentation import (
+    ADAPTIVE_SEGMENTATION_CALCULATION_VERSION,
+)
 from market_analysis.segmentation.pivot_segmentation import compute_pivot_segmentation
 
 log = structlog.get_logger(__name__)
 
-_SOURCE_CALCULATION_VERSION = "adaptive_segmentation_v3"
+_SOURCE_CALCULATION_VERSION = ADAPTIVE_SEGMENTATION_CALCULATION_VERSION
 
 
 def run_pivot_segmentation_pipeline(
@@ -145,6 +148,13 @@ def run_pivot_segmentation_pipeline(
                     )
                 source_segments = segments_by_key.get((symbol, lookback_bars), [])
                 try:
+                    if (
+                        source_summary.get("fit_reference_date") != snapshot_date
+                        or source_summary.get("price_source") != source
+                    ):
+                        raise ValueError(
+                            "Adaptive source date or price source does not match current data."
+                        )
                     summary, segments = compute_pivot_segmentation(
                         symbol,
                         frame,
@@ -156,6 +166,7 @@ def run_pivot_segmentation_pipeline(
                         min_segment_bars=int(pivot_params.get("min_segment_bars", 5)),
                         classification_params=classification_params,
                     )
+                    summary["price_source"] = source
                 except Exception:
                     failed_lookback = lookback_bars
                     lookbacks_failed += 1

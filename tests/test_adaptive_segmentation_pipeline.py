@@ -302,6 +302,7 @@ def test_pipeline_skips_complete_matching_snapshot(monkeypatch) -> None:
         "lookback_bars": 40,
         "observation_count": 40,
         "segment_count": 2,
+        "change_point_count": 1,
         "min_segment_bars": 5,
         "max_segments": 4,
         "bic_penalty_multiplier": 3.0,
@@ -313,6 +314,8 @@ def test_pipeline_skips_complete_matching_snapshot(monkeypatch) -> None:
         "max_segment_index": 1,
         "segment_identity_matches": True,
     }
+    candidate.update(fit_reference_date=target_date, price_source="test")
+    candidate["path_fingerprint"] = "obsolete-v1.1-fingerprint"
 
     monkeypatch.setattr(settings, "indicators", {"adaptive_segmentation": params})
     monkeypatch.setattr(settings, "pipeline", {"source": "test"})
@@ -327,6 +330,8 @@ def test_pipeline_skips_complete_matching_snapshot(monkeypatch) -> None:
     write = MagicMock()
     monkeypatch.setattr(pipeline, "compute_adaptive_segmentation_snapshots", compute)
     monkeypatch.setattr(pipeline, "upsert_trend_segmentation_daily", write)
+    close_fetch = MagicMock(side_effect=AssertionError("close must not be fetched"))
+    monkeypatch.setattr(pipeline, "fetch_adaptive_close_window", close_fetch)
     logger = MagicMock()
     monkeypatch.setattr(pipeline, "log", logger)
 
@@ -334,6 +339,7 @@ def test_pipeline_skips_complete_matching_snapshot(monkeypatch) -> None:
 
     assert completed == 0
     compute.assert_not_called()
+    close_fetch.assert_not_called()
     write.assert_not_called()
     logger.info.assert_any_call(
         "adaptive_segmentation.symbol.skip.existing",

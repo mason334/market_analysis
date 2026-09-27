@@ -74,11 +74,14 @@ market_analysis/
 `observation_count` 保存实际窗口。历史不足请求窗口、但至少达到配置的 fallback bars 时，仍写入
 合法 fallback 快照。
 
-自适应算法口径为 `adaptive_segmentation_v3`，拟合路径在断点处连续。候选数不超过预算时精确
+自适应算法口径为 `adaptive_segmentation_v4`，拟合路径在断点处连续。候选数不超过预算时精确
 穷举；超预算时使用确定性 beam 与局部优化，并持久化搜索模式、收敛状态和最优性审计字段。
+拟合锚点只保存相对窗口末日 close 的 log-offset；summary 保存参考日期与价格源。历史路径指纹列
+保留为兼容列，新快照写入 NULL，续跑与展示均不依赖指纹。
 
-Pivot 口径为 `pivot_refined_segmentation_v3`。内部 Pivot 只在 seed 左右固定半径的 close 中搜索，
-不使用 OHLC high/low。每个 Pivot-to-Pivot 区间独立 OLS，相邻拟合端点允许不连续。
+Pivot 口径为 `pivot_refined_segmentation_v4`。内部 Pivot 只在 seed 左右固定半径的 close 中搜索，
+不使用 OHLC high/low。每个 Pivot-to-Pivot 区间独立 OLS，相邻拟合端点允许不连续。拟合端点保存
+相对窗口末日 close 的 log-offset，不持久化新快照的绝对拟合或实际端点价格。
 
 ## 数据读取范围
 

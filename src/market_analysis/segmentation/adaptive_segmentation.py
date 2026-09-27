@@ -12,7 +12,7 @@ import pandas as pd
 
 DEFAULT_LOOKBACKS: tuple[int, ...] = (250,)
 _METHOD = "continuous_piecewise_log_linear_deterministic_hybrid_bic"
-_CALCULATION_VERSION = "adaptive_segmentation_v3"
+_CALCULATION_VERSION = "adaptive_segmentation_v4"
 _EPSILON = 1e-12
 
 ADAPTIVE_SEGMENTATION_METHOD = _METHOD
@@ -570,6 +570,7 @@ def _segment_metrics(
     start: int,
     end: int,
     window: pd.DataFrame,
+    reference_log_price: float,
 ) -> dict[str, Any]:
     anchor = start if start == 0 else start - 1
     actual_segment = log_prices[anchor:end]
@@ -604,7 +605,7 @@ def _segment_metrics(
         "log_slope_per_bar": float(slope),
         "linearity_r2": _linearity_r2(actual_segment, fitted_segment),
         "fitted_log_return": fitted_return,
-        "fitted_anchor_log_price": float(fitted[anchor]),
+        "fitted_anchor_log_offset": float(fitted[anchor] - reference_log_price),
         "actual_log_return": actual_return,
         "realized_volatility_daily": volatility,
         "vol_adjusted_trend": vol_adjusted,
@@ -654,6 +655,7 @@ def compute_adaptive_segmentation(
         return None, []
 
     log_prices = np.log(prices)
+    reference_log_price = float(log_prices[-1])
     evaluator = _RssEvaluator(log_prices)
     feasible_max = min(max_segments, lookback_bars // min_segment_bars)
     candidates: list[tuple[float, int, _SearchOutcome]] = []
@@ -713,6 +715,7 @@ def compute_adaptive_segmentation(
         "requested_lookback_bars": requested_lookback,
         "lookback_bars": lookback_bars,
         "observation_count": lookback_bars,
+        "fit_reference_date": latest_date,
         "segment_count": segment_count,
         "change_point_count": segment_count - 1,
         "selected_rss": selected.rss,
@@ -757,6 +760,7 @@ def compute_adaptive_segmentation(
                     start,
                     end,
                     window,
+                    reference_log_price,
                 ),
                 "method": _METHOD,
                 "calculation_version": _CALCULATION_VERSION,

@@ -101,6 +101,7 @@ market_analysis/
 │   │   └── pivot_segmentation.py
 │   └── pipeline/
 │       ├── __init__.py
+│       ├── _price_path.py
 │       ├── _progress.py
 │       ├── preview_adaptive_segmentation.py
 │       ├── run_adaptive_segmentation.py
@@ -126,7 +127,7 @@ market_analysis/
 
 ### 自适应初分段
 
-当前计算版本为 `adaptive_segmentation_v3`。
+当前计算版本为 `adaptive_segmentation_v4`。
 
 - 默认请求窗口为 250 bars。
 - 历史不足 250 bars、但至少达到 40 bars 时，使用实际可用窗口生成 fallback 快照。
@@ -135,16 +136,36 @@ market_analysis/
 - 使用带可配置惩罚倍数的 BIC 在不同分段数之间选择模型。
 - 将搜索模式、收敛状态、候选规模和最优性保证等审计字段写入 summary。
 - 分段数据归属采用 `[start, end)`；后一段包含跨入该段的收益。
+- 持久化拟合锚点相对窗口末日 close 的 log-offset，不持久化绝对拟合价格。
+- 同日续跑按版本、参数与明细完整性跳过；已知行情局部修订时使用 `--force` 重算。
 
 ### Pivot 精炼分段
 
-当前计算版本为 `pivot_refined_segmentation_v3`。
+当前计算版本为 `pivot_refined_segmentation_v4`，只接受
+`adaptive_segmentation_v4` 源快照。
 
 - 以已持久化的自适应内部断点作为 seed。
 - 只在 seed 左右固定半径的 close 中搜索 Pivot，不使用 OHLC high/low。
 - 每个 Pivot-to-Pivot 区间执行独立 OLS，相邻拟合端点不要求连续。
 - 内部 Pivot 作为左侧 segment 的终点保存，末段终点类型为 `window_end`。
 - 同一 symbol 的所有 lookback 必须全部成功后才会一次性写入。
+- 拟合端点以窗口末日 close 为基准保存 log-offset；实际端点价格、窗口价格上下界由展示端使用
+  当前 OHLCV 动态取得。
+
+### 尺度无关分段快照
+
+已实施方案 `MA-AS-SCALEINV v1.2.0` 将价格尺度与结构性结果分离。设窗口末日 close 为
+`P_ref`，任一拟合点价格为 `P_fit`，数据库保存
+`log(P_fit) - log(P_ref)`。当 split 或分红调整使整个窗口统一乘以正常数 `a` 时，标准化路径、
+断点、斜率、收益率、R²、RSS/BIC 和拟合 offset 都保持不变。
+
+summary 保存 `fit_reference_date` 和 `price_source`。同一行情日期重复运行时，adaptive 根据算法版本、
+参数、请求与实际窗口及分段明细完整性决定是否跳过；完整快照无需再次读取 close。已知行情数据发生
+局部修订时应使用 `--force` 重算 adaptive，然后重算 Pivot。历史 fingerprint 列仍保留在表中，
+新快照写入 `NULL`，运行流程和 Dashboard 均不再校验指纹。
+
+数据库为兼容历史数据保留旧绝对价格列，但 `v4` 新快照不再写入这些列。Dashboard 应以已经用于
+K 线渲染的同一份 OHLCV 窗口作为 `P_ref`，用保存的 offset 重建拟合价格，避免重复访问行情数据库。
 
 完整计算约定见 `docs/adaptive_segmentation_development.md` 和对应模块 docstring。
 

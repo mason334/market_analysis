@@ -91,13 +91,16 @@ def _resume_candidate_matches(
     effective_lookback_bars: int,
     params: dict[str, Any],
     expected_search_config: dict[str, Any],
+    snapshot_date: date,
+    price_source: str,
 ) -> bool:
     """Check persisted parameters and segment integrity without recomputing."""
     if candidate is None:
         return False
     segment_count = int(candidate["segment_count"])
     return (
-        int(candidate["requested_lookback_bars"]) == requested_lookback_bars
+        candidate["date"] == snapshot_date
+        and int(candidate["requested_lookback_bars"]) == requested_lookback_bars
         and int(candidate["lookback_bars"]) == effective_lookback_bars
         and int(candidate["observation_count"]) == effective_lookback_bars
         and int(candidate["min_segment_bars"])
@@ -114,6 +117,9 @@ def _resume_candidate_matches(
         and str(candidate["method"]) == ADAPTIVE_SEGMENTATION_METHOD
         and str(candidate["calculation_version"])
         == ADAPTIVE_SEGMENTATION_CALCULATION_VERSION
+        and candidate["fit_reference_date"] == snapshot_date
+        and candidate["price_source"] == price_source
+        and int(candidate["change_point_count"]) == segment_count - 1
         and int(candidate["persisted_segment_count"]) == segment_count
         and candidate["min_segment_index"] == 0
         and candidate["max_segment_index"] == segment_count - 1
@@ -269,6 +275,8 @@ def run_adaptive_segmentation_pipeline(
                         effective_lookback_bars=effective_lookback,
                         params=params,
                         expected_search_config=expected_search_config,
+                        snapshot_date=snapshot_date,
+                        price_source=source,
                     )
                     for effective_lookback, requested_lookback in (
                         requested_by_effective.items()
@@ -302,6 +310,11 @@ def run_adaptive_segmentation_pipeline(
                         symbol_params,
                         requested_lookbacks_by_effective=requested_by_effective,
                     )
+                    for summary in summaries:
+                        summary["fit_reference_date"] = summary.get(
+                            "date", snapshot_date
+                        )
+                        summary["price_source"] = source
                     upsert_trend_segmentation_daily(summaries, segments)
                 except Exception:
                     failed_symbols += 1

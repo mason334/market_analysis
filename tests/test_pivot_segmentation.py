@@ -40,7 +40,7 @@ def _source() -> tuple[dict[str, object], list[dict[str, object]]]:
         "lookback_bars": 30,
         "segment_count": 3,
         "method": "continuous_piecewise_log_linear_deterministic_hybrid_bic",
-        "calculation_version": "adaptive_segmentation_v3",
+        "calculation_version": "adaptive_segmentation_v4",
     }
     segments = [
         _source_segment(0, 0, 9, 0.12),
@@ -106,9 +106,7 @@ def test_close_pivots_drive_independently_fitted_segments() -> None:
     )
 
     assert summary["method"] == "pivot_seeded_independent_piecewise_log_linear"
-    assert summary["calculation_version"] == "pivot_refined_segmentation_v3"
-    assert summary["window_close_min"] == pytest.approx(frame["close"].min())
-    assert summary["window_close_max"] == pytest.approx(frame["close"].max())
+    assert summary["calculation_version"] == "pivot_refined_segmentation_v4"
     assert summary["pivot_count"] == 2
     assert [row["end_point_type"] for row in segments] == [
         "high",
@@ -119,11 +117,11 @@ def test_close_pivots_drive_independently_fitted_segments() -> None:
     assert [row["pivot_seed_bar_index"] for row in segments[:-1]] == [9, 19]
     assert [row["pivot_displacement_bars"] for row in segments[:-1]] == [2, 2]
     assert all(int(row["observation_count"]) >= 5 for row in segments)
-    assert segments[0]["fitted_end_log_price"] != pytest.approx(
-        segments[1]["fitted_start_log_price"]
+    assert segments[0]["fitted_end_log_offset"] != pytest.approx(
+        segments[1]["fitted_start_log_offset"]
     )
-    assert segments[1]["fitted_end_log_price"] != pytest.approx(
-        segments[2]["fitted_start_log_price"]
+    assert segments[1]["fitted_end_log_offset"] != pytest.approx(
+        segments[2]["fitted_start_log_offset"]
     )
     expected_rss = 0.0
     for row in segments:
@@ -190,30 +188,35 @@ def test_pivot_search_ignores_ohlc_extremes_and_is_deterministic() -> None:
     assert first == second
 
 
-def test_window_close_bounds_use_only_the_actual_fallback_window() -> None:
+def test_scale_change_preserves_pivot_structure_and_normalized_fit() -> None:
     source_summary, source_segments = _source()
     frame = _frame()
-    earlier = pd.DataFrame(
-        {"close": [1.0, 1_000.0]},
-        index=pd.bdate_range(end=frame.index[0] - pd.Timedelta(days=1), periods=2),
+    original_summary, original = compute_pivot_segmentation(
+        "TEST", frame, source_summary, source_segments
+    )
+    scaled_summary, scaled = compute_pivot_segmentation(
+        "TEST", frame.assign(close=frame["close"] * 0.25), source_summary, source_segments
     )
 
-    summary, _ = compute_pivot_segmentation(
-        "TEST",
-        pd.concat([earlier, frame]),
-        source_summary,
-        source_segments,
-    )
-
-    assert summary["window_close_min"] == pytest.approx(frame["close"].min())
-    assert summary["window_close_max"] == pytest.approx(frame["close"].max())
+    assert original_summary["pivot_count"] == scaled_summary["pivot_count"]
+    for original_row, scaled_row in zip(original, scaled, strict=True):
+        for field in (
+            "start_endpoint_bar_index",
+            "end_endpoint_bar_index",
+            "log_slope_per_bar",
+            "linearity_r2",
+            "fitted_log_return",
+            "fitted_start_log_offset",
+            "fitted_end_log_offset",
+        ):
+            assert scaled_row[field] == pytest.approx(original_row[field])
 
 
 def test_wrong_source_version_is_rejected() -> None:
     source_summary, source_segments = _source()
     source_summary["calculation_version"] = "adaptive_trend_v3"
 
-    with pytest.raises(ValueError, match="adaptive_segmentation_v3"):
+    with pytest.raises(ValueError, match="adaptive_segmentation_v4"):
         compute_pivot_segmentation(
             "TEST", _frame(), source_summary, source_segments
         )
@@ -242,7 +245,7 @@ def test_all_six_direction_transitions_create_expected_pivot_type(
         "lookback_bars": 20,
         "segment_count": 2,
         "method": "source_method",
-        "calculation_version": "adaptive_segmentation_v3",
+        "calculation_version": "adaptive_segmentation_v4",
     }
     source_segments = [
         {
@@ -307,7 +310,7 @@ def test_equal_close_extreme_uses_nearest_then_earlier_bar() -> None:
         "lookback_bars": 20,
         "segment_count": 2,
         "method": "source_method",
-        "calculation_version": "adaptive_segmentation_v3",
+        "calculation_version": "adaptive_segmentation_v4",
     }
     segments = [
         {**_source_segment(0, 0, 9, 0.08), "date": snapshot_date, "lookback_bars": 20},
@@ -334,7 +337,7 @@ def test_window_edge_extreme_falls_back_to_legal_segment_boundary() -> None:
         "lookback_bars": 20,
         "segment_count": 2,
         "method": "source_method",
-        "calculation_version": "adaptive_segmentation_v3",
+        "calculation_version": "adaptive_segmentation_v4",
     }
     segments = [
         {**_source_segment(0, 0, 4, 0.08), "date": snapshot_date, "lookback_bars": 20},
@@ -359,7 +362,7 @@ def test_adjacent_pivot_conflict_discards_one_seed_with_audit_reason() -> None:
         "lookback_bars": 20,
         "segment_count": 3,
         "method": "source_method",
-        "calculation_version": "adaptive_segmentation_v3",
+        "calculation_version": "adaptive_segmentation_v4",
     }
     segments = [
         {**_source_segment(0, 0, 9, 0.08), "date": snapshot_date, "lookback_bars": 20},

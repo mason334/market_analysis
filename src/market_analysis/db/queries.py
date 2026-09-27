@@ -14,7 +14,7 @@ log = structlog.get_logger(__name__)
 _FETCH_OHLCV = """
 SELECT date, open, high, low, close, volume
 FROM daily_bars_split_adjusted
-WHERE symbol = %s
+WHERE symbol = %s AND source = %s
 ORDER BY date
 """
 
@@ -61,11 +61,12 @@ INSERT INTO trend_segmentation_daily (
     bic_improvement, min_segment_bars, max_segments, bic_penalty_multiplier,
     search_mode, is_global_optimum, candidates_evaluated, refinement_converged,
     search_config, search_diagnostics,
+    fit_reference_date, path_fingerprint, path_fingerprint_version, price_source,
     method, calculation_version
 )
 VALUES (
     %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s,
-    %s, %s, %s, %s, %s, %s, %s, %s, %s
+    %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s
 )
 ON CONFLICT (symbol, date, lookback_bars) DO UPDATE SET
     requested_lookback_bars = EXCLUDED.requested_lookback_bars,
@@ -86,6 +87,10 @@ ON CONFLICT (symbol, date, lookback_bars) DO UPDATE SET
     refinement_converged = EXCLUDED.refinement_converged,
     search_config       = EXCLUDED.search_config,
     search_diagnostics  = EXCLUDED.search_diagnostics,
+    fit_reference_date  = EXCLUDED.fit_reference_date,
+    path_fingerprint    = EXCLUDED.path_fingerprint,
+    path_fingerprint_version = EXCLUDED.path_fingerprint_version,
+    price_source        = EXCLUDED.price_source,
     method              = EXCLUDED.method,
     calculation_version = EXCLUDED.calculation_version
 """
@@ -95,6 +100,7 @@ INSERT INTO trend_segment_daily (
     symbol, date, lookback_bars, segment_index,
     start_date, end_date, start_bar_index, end_bar_index, observation_count,
     log_slope_per_bar, linearity_r2, fitted_log_return, fitted_anchor_log_price,
+    fitted_anchor_log_offset,
     actual_log_return,
     realized_volatility_daily, vol_adjusted_trend, efficiency_ratio,
     largest_move_log_return, largest_move_date, largest_move_bar_index,
@@ -103,7 +109,7 @@ INSERT INTO trend_segment_daily (
 )
 VALUES (
     %s, %s, %s, %s, %s, %s, %s, %s, %s,
-    %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s
+    %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s
 )
 ON CONFLICT (symbol, date, lookback_bars, segment_index) DO UPDATE SET
     start_date                = EXCLUDED.start_date,
@@ -115,6 +121,7 @@ ON CONFLICT (symbol, date, lookback_bars, segment_index) DO UPDATE SET
     linearity_r2              = EXCLUDED.linearity_r2,
     fitted_log_return         = EXCLUDED.fitted_log_return,
     fitted_anchor_log_price   = EXCLUDED.fitted_anchor_log_price,
+    fitted_anchor_log_offset  = EXCLUDED.fitted_anchor_log_offset,
     actual_log_return         = EXCLUDED.actual_log_return,
     realized_volatility_daily = EXCLUDED.realized_volatility_daily,
     vol_adjusted_trend        = EXCLUDED.vol_adjusted_trend,
@@ -149,13 +156,15 @@ _TREND_SEGMENTATION_COLS = [
     "selected_bic", "single_segment_bic", "bic_improvement", "min_segment_bars",
     "max_segments", "bic_penalty_multiplier", "search_mode", "is_global_optimum",
     "candidates_evaluated", "refinement_converged", "search_config",
-    "search_diagnostics", "method", "calculation_version",
+    "search_diagnostics", "fit_reference_date", "price_source",
+    "method", "calculation_version",
 ]
 
 _TREND_SEGMENT_COLS = [
     "symbol", "date", "lookback_bars", "segment_index", "start_date", "end_date",
     "start_bar_index", "end_bar_index", "observation_count", "log_slope_per_bar",
-    "linearity_r2", "fitted_log_return", "fitted_anchor_log_price", "actual_log_return",
+    "linearity_r2", "fitted_log_return", "fitted_anchor_log_price",
+    "fitted_anchor_log_offset", "actual_log_return",
     "realized_volatility_daily", "vol_adjusted_trend", "efficiency_ratio",
     "largest_move_log_return", "largest_move_date", "largest_move_bar_index",
     "largest_move_path_share", "method", "calculation_version",
@@ -172,7 +181,9 @@ SELECT symbol, date, requested_lookback_bars, lookback_bars, observation_count,
        selected_bic, single_segment_bic, bic_improvement, min_segment_bars,
        max_segments, bic_penalty_multiplier,
        search_mode, is_global_optimum, candidates_evaluated, refinement_converged,
-       search_config, search_diagnostics, method, calculation_version
+       search_config, search_diagnostics,
+       fit_reference_date, price_source,
+       method, calculation_version
 FROM trend_segmentation_daily
 WHERE date = %s
 ORDER BY symbol, lookback_bars
@@ -181,7 +192,8 @@ ORDER BY symbol, lookback_bars
 _FETCH_TREND_SEGMENT_SNAPSHOT = """
 SELECT symbol, date, lookback_bars, segment_index, start_date, end_date,
        start_bar_index, end_bar_index, observation_count, log_slope_per_bar,
-       linearity_r2, fitted_log_return, fitted_anchor_log_price, actual_log_return,
+       linearity_r2, fitted_log_return, fitted_anchor_log_price,
+       fitted_anchor_log_offset, actual_log_return,
        realized_volatility_daily, vol_adjusted_trend, efficiency_ratio,
        largest_move_log_return, largest_move_date, largest_move_bar_index,
        largest_move_path_share,
@@ -196,9 +208,11 @@ WITH latest AS (
     SELECT DISTINCT ON (summary.symbol, summary.requested_lookback_bars)
            summary.symbol, summary.date, summary.requested_lookback_bars,
            summary.lookback_bars, summary.observation_count,
-           summary.segment_count, summary.min_segment_bars,
+           summary.segment_count, summary.change_point_count,
+           summary.min_segment_bars,
            summary.max_segments, summary.bic_penalty_multiplier,
-           summary.search_config, summary.method, summary.calculation_version
+           summary.search_config, summary.method, summary.calculation_version,
+           summary.fit_reference_date, summary.price_source
     FROM trend_segmentation_daily AS summary
     WHERE summary.symbol = ANY(%s)
       AND summary.requested_lookback_bars = ANY(%s)
@@ -209,9 +223,11 @@ WITH latest AS (
 )
 SELECT latest.symbol, latest.date, latest.requested_lookback_bars,
        latest.lookback_bars, latest.observation_count,
-       latest.segment_count, latest.min_segment_bars,
+       latest.segment_count, latest.change_point_count,
+       latest.min_segment_bars,
        latest.max_segments, latest.bic_penalty_multiplier,
        latest.search_config, latest.method, latest.calculation_version,
+       latest.fit_reference_date, latest.price_source,
        COUNT(segment.segment_index) AS persisted_segment_count,
        MIN(segment.segment_index) AS min_segment_index,
        MAX(segment.segment_index) AS max_segment_index,
@@ -226,9 +242,11 @@ LEFT JOIN trend_segment_daily AS segment
  AND segment.lookback_bars = latest.lookback_bars
 GROUP BY latest.symbol, latest.date, latest.requested_lookback_bars,
          latest.lookback_bars, latest.observation_count,
-         latest.segment_count, latest.min_segment_bars,
+         latest.segment_count, latest.change_point_count,
+         latest.min_segment_bars,
          latest.max_segments, latest.bic_penalty_multiplier,
-         latest.search_config, latest.method, latest.calculation_version
+         latest.search_config, latest.method, latest.calculation_version,
+         latest.fit_reference_date, latest.price_source
 ORDER BY latest.symbol, latest.requested_lookback_bars
 """
 
@@ -239,12 +257,15 @@ _ADAPTIVE_RESUME_CANDIDATE_COLS = [
     "lookback_bars",
     "observation_count",
     "segment_count",
+    "change_point_count",
     "min_segment_bars",
     "max_segments",
     "bic_penalty_multiplier",
     "search_config",
     "method",
     "calculation_version",
+    "fit_reference_date",
+    "price_source",
     "persisted_segment_count",
     "min_segment_index",
     "max_segment_index",
@@ -255,6 +276,8 @@ _UPSERT_PIVOT_SEGMENTATION_DAILY = """
 INSERT INTO pivot_segmentation_daily (
     symbol, date, requested_lookback_bars, lookback_bars, observation_count,
     window_close_min, window_close_max,
+    fit_reference_date, path_fingerprint, path_fingerprint_version,
+    source_path_fingerprint, price_source,
     pivot_count, segment_count, fit_rss,
     search_radius_bars, min_segment_bars,
     classification_config, resolution_diagnostics,
@@ -262,14 +285,20 @@ INSERT INTO pivot_segmentation_daily (
     method, calculation_version
 )
 VALUES (
-    %s, %s, %s, %s, %s, %s, %s, %s, %s,
-    %s, %s, %s, %s, %s, %s, %s, %s, %s
+    %s, %s, %s, %s, %s, %s, %s, %s, %s, %s,
+    %s, %s, %s, %s, %s, %s, %s, %s, %s, %s,
+    %s, %s, %s
 )
 ON CONFLICT (symbol, date, lookback_bars) DO UPDATE SET
     requested_lookback_bars                 = EXCLUDED.requested_lookback_bars,
     observation_count                       = EXCLUDED.observation_count,
     window_close_min                        = EXCLUDED.window_close_min,
     window_close_max                        = EXCLUDED.window_close_max,
+    fit_reference_date                      = EXCLUDED.fit_reference_date,
+    path_fingerprint                        = EXCLUDED.path_fingerprint,
+    path_fingerprint_version                = EXCLUDED.path_fingerprint_version,
+    source_path_fingerprint                 = EXCLUDED.source_path_fingerprint,
+    price_source                            = EXCLUDED.price_source,
     pivot_count                             = EXCLUDED.pivot_count,
     segment_count                           = EXCLUDED.segment_count,
     fit_rss                                 = EXCLUDED.fit_rss,
@@ -292,6 +321,7 @@ INSERT INTO pivot_segment_daily (
     observation_count, return_interval_count, segment_type,
     log_slope_per_bar, linearity_r2,
     fitted_start_log_price, fitted_end_log_price, fitted_log_return,
+    fitted_start_log_offset, fitted_end_log_offset,
     actual_start_log_price, actual_end_log_price,
     actual_start_close, actual_end_close, actual_log_return,
     realized_volatility_daily, vol_adjusted_trend, efficiency_ratio,
@@ -305,7 +335,7 @@ VALUES (
     %s, %s, %s, %s, %s, %s, %s, %s, %s, %s,
     %s, %s, %s, %s, %s, %s, %s, %s, %s, %s,
     %s, %s, %s, %s, %s, %s, %s, %s, %s, %s,
-    %s, %s, %s, %s, %s, %s, %s
+    %s, %s, %s, %s, %s, %s, %s, %s, %s
 )
 ON CONFLICT (symbol, date, lookback_bars, segment_index) DO UPDATE SET
     start_boundary_index         = EXCLUDED.start_boundary_index,
@@ -321,6 +351,8 @@ ON CONFLICT (symbol, date, lookback_bars, segment_index) DO UPDATE SET
     linearity_r2                 = EXCLUDED.linearity_r2,
     fitted_start_log_price       = EXCLUDED.fitted_start_log_price,
     fitted_end_log_price         = EXCLUDED.fitted_end_log_price,
+    fitted_start_log_offset      = EXCLUDED.fitted_start_log_offset,
+    fitted_end_log_offset        = EXCLUDED.fitted_end_log_offset,
     fitted_log_return            = EXCLUDED.fitted_log_return,
     actual_start_log_price       = EXCLUDED.actual_start_log_price,
     actual_end_log_price         = EXCLUDED.actual_end_log_price,
@@ -361,6 +393,7 @@ WHERE symbol = %s AND date = %s AND NOT (lookback_bars = ANY(%s))
 _FETCH_PIVOT_SEGMENTATION_SNAPSHOT = """
 SELECT symbol, date, requested_lookback_bars, lookback_bars, observation_count,
        window_close_min, window_close_max,
+       fit_reference_date, price_source,
        pivot_count, segment_count, fit_rss,
        search_radius_bars, min_segment_bars,
        classification_config, resolution_diagnostics,
@@ -373,7 +406,8 @@ ORDER BY symbol, lookback_bars
 
 _PIVOT_SEGMENTATION_COLS = [
     "symbol", "date", "requested_lookback_bars", "lookback_bars",
-    "observation_count", "window_close_min", "window_close_max", "pivot_count",
+    "observation_count", "window_close_min", "window_close_max",
+    "fit_reference_date", "price_source", "pivot_count",
     "segment_count", "fit_rss", "search_radius_bars", "min_segment_bars",
     "classification_config", "resolution_diagnostics", "source_segmentation_method",
     "source_segmentation_calculation_version", "method", "calculation_version",
@@ -387,6 +421,7 @@ SELECT symbol, date, lookback_bars, segment_index,
        observation_count, return_interval_count, segment_type,
        log_slope_per_bar, linearity_r2,
        fitted_start_log_price, fitted_end_log_price, fitted_log_return,
+       fitted_start_log_offset, fitted_end_log_offset,
        actual_start_log_price, actual_end_log_price,
        actual_start_close, actual_end_close, actual_log_return,
        realized_volatility_daily, vol_adjusted_trend, efficiency_ratio,
@@ -406,7 +441,8 @@ _PIVOT_SEGMENT_COLS = [
     "end_endpoint_bar_index", "start_endpoint_date", "end_endpoint_date",
     "observation_count", "return_interval_count", "segment_type",
     "log_slope_per_bar", "linearity_r2", "fitted_start_log_price",
-    "fitted_end_log_price", "fitted_log_return", "actual_start_log_price",
+    "fitted_end_log_price", "fitted_log_return", "fitted_start_log_offset",
+    "fitted_end_log_offset", "actual_start_log_price",
     "actual_end_log_price", "actual_start_close", "actual_end_close",
     "actual_log_return", "realized_volatility_daily", "vol_adjusted_trend",
     "efficiency_ratio", "end_point_type", "pivot_seed_bar_index",
@@ -420,7 +456,7 @@ _PIVOT_SEGMENT_COLS = [
 
 def fetch_ohlcv(symbol: str, source: str = "") -> pd.DataFrame:
     with get_source_conn() as conn:
-        rows = conn.execute(_FETCH_OHLCV, (symbol,)).fetchall()
+        rows = conn.execute(_FETCH_OHLCV, (symbol, source)).fetchall()
     if not rows:
         return pd.DataFrame(columns=["date", "open", "high", "low", "close", "volume"])
     df = pd.DataFrame(rows, columns=["date", "open", "high", "low", "close", "volume"])
@@ -541,6 +577,10 @@ def upsert_trend_segmentation_daily(
                     row.get("refinement_converged", True),
                     Jsonb(row.get("search_config", {})),
                     Jsonb(row.get("search_diagnostics", [])),
+                    row.get("fit_reference_date"),
+                    None,  # compatibility columns: fingerprints are no longer written
+                    None,
+                    row.get("price_source"),
                     row["method"],
                     row["calculation_version"],
                 ),
@@ -562,6 +602,7 @@ def upsert_trend_segmentation_daily(
                     row.get("linearity_r2"),
                     row.get("fitted_log_return"),
                     row.get("fitted_anchor_log_price"),
+                    row.get("fitted_anchor_log_offset"),
                     row.get("actual_log_return"),
                     row.get("realized_volatility_daily"),
                     row.get("vol_adjusted_trend"),
@@ -582,7 +623,7 @@ def fetch_latest_adaptive_segmentation_date() -> date | None:
     with get_conn() as conn:
         row = conn.execute(
             _FETCH_LATEST_ADAPTIVE_SEGMENTATION_DATE,
-            ("adaptive_segmentation_v3",),
+            ("adaptive_segmentation_v4",),
         ).fetchone()
     return row[0] if row and row[0] is not None else None
 
@@ -696,6 +737,11 @@ def upsert_pivot_segmentation_daily(
                     row["observation_count"],
                     row.get("window_close_min"),
                     row.get("window_close_max"),
+                    row.get("fit_reference_date"),
+                    None,  # compatibility columns: fingerprints are no longer written
+                    None,
+                    None,
+                    row.get("price_source"),
                     row["pivot_count"],
                     row["segment_count"],
                     row.get("fit_rss"),
@@ -731,6 +777,8 @@ def upsert_pivot_segmentation_daily(
                     row.get("fitted_start_log_price"),
                     row.get("fitted_end_log_price"),
                     row.get("fitted_log_return"),
+                    row.get("fitted_start_log_offset"),
+                    row.get("fitted_end_log_offset"),
                     row.get("actual_start_log_price"),
                     row.get("actual_end_log_price"),
                     row.get("actual_start_close"),

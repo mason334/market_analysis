@@ -9,9 +9,12 @@ import numpy as np
 import pandas as pd
 
 _METHOD = "pivot_seeded_independent_piecewise_log_linear"
-_CALCULATION_VERSION = "pivot_refined_segmentation_v3"
-_SOURCE_CALCULATION_VERSION = "adaptive_segmentation_v3"
+_CALCULATION_VERSION = "pivot_refined_segmentation_v4"
+_SOURCE_CALCULATION_VERSION = "adaptive_segmentation_v4"
 _EPSILON = 1e-12
+
+PIVOT_SEGMENTATION_METHOD = _METHOD
+PIVOT_SEGMENTATION_CALCULATION_VERSION = _CALCULATION_VERSION
 
 _PIVOT_TYPE_BY_TRANSITION = {
     ("up", "down"): "high",
@@ -113,7 +116,7 @@ def _validate_source_segments(
 ) -> list[dict[str, Any]]:
     if summary.get("calculation_version") != _SOURCE_CALCULATION_VERSION:
         raise ValueError(
-            "Pivot refinement requires adaptive_segmentation_v3 source rows."
+            "Pivot refinement requires adaptive_segmentation_v4 source rows."
         )
     expected_count = int(summary["segment_count"])
     ordered = sorted(segments, key=lambda row: int(row["segment_index"]))
@@ -378,6 +381,7 @@ def _segment_metrics(
     slope: float,
     start_boundary: int,
     end_boundary: int,
+    reference_log_price: float,
 ) -> dict[str, Any]:
     start_endpoint = 0 if start_boundary == 0 else start_boundary - 1
     end_endpoint = end_boundary - 1
@@ -403,13 +407,9 @@ def _segment_metrics(
         "return_interval_count": return_interval_count,
         "log_slope_per_bar": float(slope),
         "linearity_r2": _linearity_r2(actual, fitted_segment),
-        "fitted_start_log_price": float(fitted_segment[0]),
-        "fitted_end_log_price": float(fitted_segment[-1]),
+        "fitted_start_log_offset": float(fitted_segment[0] - reference_log_price),
+        "fitted_end_log_offset": float(fitted_segment[-1] - reference_log_price),
         "fitted_log_return": fitted_return,
-        "actual_start_log_price": float(actual[0]),
-        "actual_end_log_price": float(actual[-1]),
-        "actual_start_close": float(np.exp(actual[0])),
-        "actual_end_close": float(np.exp(actual[-1])),
         "actual_log_return": actual_return,
         "realized_volatility_daily": volatility,
         "vol_adjusted_trend": vol_adjusted,
@@ -461,6 +461,7 @@ def compute_pivot_segmentation(
     )
     boundaries = (0, *(pivot.bar_index + 1 for pivot in selected_pivots), lookback_bars)
     log_prices = np.log(closes)
+    reference_log_price = float(log_prices[-1])
     fitted_segments, slopes, rss = _independent_fit(log_prices, boundaries)
 
     classification_config = {
@@ -476,8 +477,7 @@ def compute_pivot_segmentation(
         ),
         "lookback_bars": lookback_bars,
         "observation_count": lookback_bars,
-        "window_close_min": float(np.min(closes)),
-        "window_close_max": float(np.max(closes)),
+        "fit_reference_date": source_date,
         "pivot_count": len(selected_pivots),
         "segment_count": len(boundaries) - 1,
         "fit_rss": rss,
@@ -503,6 +503,7 @@ def compute_pivot_segmentation(
             float(slopes[segment_index]),
             start_boundary,
             end_boundary,
+            reference_log_price,
         )
         endpoint_date: date = frame.index[metrics["end_endpoint_bar_index"]].date()
         start_endpoint_date: date = frame.index[
@@ -564,6 +565,7 @@ def reconstruct_pivot_fit(
         return pd.DataFrame()
     ordered = sorted(segments, key=lambda row: int(row["segment_index"]))
     reconstructed: list[pd.DataFrame] = []
+    reference_log_price = float(np.log(float(frame["close"].iloc[-1])))
     for row in ordered:
         start_endpoint = int(row["start_endpoint_bar_index"])
         end_endpoint = int(row["end_endpoint_bar_index"])
@@ -573,8 +575,8 @@ def reconstruct_pivot_fit(
             frame["close"].iloc[start_endpoint : end_endpoint + 1].to_numpy(dtype=float)
         )
         positions = np.arange(len(actual), dtype=float)
-        fitted_start = float(row["fitted_start_log_price"])
-        fitted_end = float(row["fitted_end_log_price"])
+        fitted_start = reference_log_price + float(row["fitted_start_log_offset"])
+        fitted_end = reference_log_price + float(row["fitted_end_log_offset"])
         denominator = max(end_endpoint - start_endpoint, 1)
         fitted = fitted_start + (fitted_end - fitted_start) * positions / denominator
         reconstructed.append(

@@ -4,12 +4,12 @@
 > 这些内容用于解释历史设计演进，不代表当前生产模块或接口。
 
 > 文档状态：已实施
-> 当前初分段口径：`adaptive_segmentation_v3`
+> 当前初分段口径：`adaptive_segmentation_v4`
 > 当前初分段方法：`continuous_piecewise_log_linear_deterministic_hybrid_bic`
-> 当前精炼分段口径：`pivot_refined_segmentation_v3`
+> 当前精炼分段口径：`pivot_refined_segmentation_v4`
 > 当前精炼分段方法：`pivot_seeded_independent_piecewise_log_linear`
-> 已实施方案：`MA-PSR-LOCAL v1.0.0`
-> 最近更新：2026-08-20
+> 已实施方案：`MA-AS-SCALEINV v1.2.0`
+> 最近更新：2026-09-27
 
 ## 1. 文档目的
 
@@ -26,7 +26,7 @@
 
 ## 2. 当前工作状态
 
-### 2.1 已实现：`adaptive_segmentation_v3` 与 `pivot_refined_segmentation_v3`
+### 2.1 已实现：`adaptive_segmentation_v4` 与 `pivot_refined_segmentation_v4`
 
 当前 `src/market_analysis/segmentation/adaptive_segmentation.py` 已实现：
 
@@ -38,6 +38,47 @@
 - 输出模型摘要、逐段指标以及拟合路径重建结果；
 - 分段采用 `[start, end)`，后一段拥有 `start - 1 -> start` 的进入收益；
 - 拟合路径在断点处连续，但不强制经过实际窗口端点。
+
+`v4` 在 `v3` 的分段与搜索算法之上增加尺度无关持久化契约；断点选择和模型选择口径不变。
+`v3` 的绝对拟合价格字段只作为历史兼容列保留，新快照使用相对窗口末日 close 的 log-offset。
+
+### 2.1.1 已实施方案：尺度无关分段快照
+
+- **方案名称**：尺度无关分段快照
+- **方案编号**：`MA-AS-SCALEINV`
+- **版本号**：`v1.2.0`
+- **状态**：已实施
+
+设窗口共有 `N` 个交易日，`P_t > 0` 表示第 `t` 个交易日的 split-adjusted close，
+`t = 0, ..., N-1`，价格单位为该行情源当前采用的货币尺度。定义：
+
+```text
+y_t = log(P_t)
+r_t = y_t - y_(N-1)
+```
+
+其中 `r_t` 是相对窗口末日 close 的无量纲 log-offset。若整个窗口统一乘以正调整因子 `a`，则
+`log(aP_t) - log(aP_(N-1)) = r_t`，所以断点、斜率、log return、R²、RSS/BIC 以及拟合
+offset 均不变。若分红或数据修订只改变窗口的一部分，`r_t` 会变化；已知这类修订时应显式强制重算。
+
+持久化规则如下：
+
+- 自适应 segment 保存 `fitted_anchor_log_offset`；
+- Pivot segment 保存 `fitted_start_log_offset` 与 `fitted_end_log_offset`；
+- summary 保存 `fit_reference_date` 与 `price_source`。同日期 adaptive 续跑根据计算版本、参数、
+  请求与实际窗口、segment 数量与索引完整性跳过，跳过前不读取 close；
+- Pivot 仍读取 OHLCV 并重新计算，同时核对 adaptive 的参考日期和价格源；
+- v1.1.0 使用的路径指纹列作为历史兼容列保留，新快照写入 `NULL`。行情局部修订不会被自动识别，
+  需执行 adaptive `--force` 并重算 Pivot；
+- 旧绝对价格列不删除，以避免破坏历史 schema，但 `v4` 新快照写入 `NULL`。
+
+下游重建拟合线时，设当前 OHLCV 窗口末日 close 为 `P_ref`，数据库中的拟合 offset 为 `o_t`，
+则展示价格为 `P_fit,t = P_ref × exp(o_t)`。`investment_dashboard` 应复用同一次 K 线渲染已经读取的
+OHLCV DataFrame，不为拟合线额外查询行情数据库。支撑/压力端点以及窗口 close 上下界也从该窗口
+按持久化 bar index 动态取得。
+
+v1.1.0 的迁移为追加式，四张表增加 offset、路径指纹和引用元数据字段。v1.2.0 不改变 schema，
+旧列和历史行保留；新版 Dashboard 可读取历史 v4 快照和新写入的无指纹 v4 快照。
 
 当前默认配置为：
 

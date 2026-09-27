@@ -64,8 +64,10 @@ def _summary(lookback: int = 40) -> dict[str, Any]:
         "refinement_converged": True,
         "search_config": {"exhaustive_batch_size": 2048},
         "search_diagnostics": [],
+        "fit_reference_date": date(2026, 7, 15),
+        "price_source": "tiingo",
         "method": "continuous_piecewise_log_linear_deterministic_hybrid_bic",
-        "calculation_version": "adaptive_segmentation_v3",
+        "calculation_version": "adaptive_segmentation_v4",
     }
 
 
@@ -83,7 +85,8 @@ def _segment() -> dict[str, Any]:
         "log_slope_per_bar": -0.01,
         "linearity_r2": 0.9,
         "fitted_log_return": -0.19,
-        "fitted_anchor_log_price": 4.5,
+        "fitted_anchor_log_price": None,
+        "fitted_anchor_log_offset": -0.2,
         "actual_log_return": -0.18,
         "realized_volatility_daily": 0.02,
         "vol_adjusted_trend": -2.1,
@@ -93,7 +96,7 @@ def _segment() -> dict[str, Any]:
         "largest_move_bar_index": 9,
         "largest_move_path_share": 0.2,
         "method": "continuous_piecewise_log_linear_deterministic_hybrid_bic",
-        "calculation_version": "adaptive_segmentation_v3",
+        "calculation_version": "adaptive_segmentation_v4",
     }
 
 
@@ -116,9 +119,10 @@ def test_adaptive_upsert_replaces_segments_and_writes_both_tables(monkeypatch) -
         for execution in connection.executions
         if "INSERT INTO trend_segment_daily" in execution[0]
     )
-    assert len(summary_execution[1] or ()) == 23
+    assert len(summary_execution[1] or ()) == 27
     assert (summary_execution[1] or ())[2:5] == (250, 40, 40)
-    assert len(segment_execution[1] or ()) == 23
+    assert (summary_execution[1] or ())[22:24] == (None, None)
+    assert len(segment_execution[1] or ()) == 24
 
 
 def test_adaptive_upsert_rejects_mixed_snapshots(monkeypatch) -> None:
@@ -147,6 +151,8 @@ def test_schema_creates_adaptive_summary_and_detail_tables(monkeypatch) -> None:
     assert "ADD COLUMN IF NOT EXISTS requested_lookback_bars" in statements
     assert "trend_segmentation_requested_lookback_check" in statements
     assert "ADD COLUMN IF NOT EXISTS fitted_anchor_log_price" in statements
+    assert "ADD COLUMN IF NOT EXISTS fitted_anchor_log_offset" in statements
+    assert "ADD COLUMN IF NOT EXISTS path_fingerprint" in statements
     assert "trend_segmentation_daily_date_lookback_idx" in statements
     assert "trend_segment_daily_symbol_date_idx" in statements
     for retired_table in (
@@ -282,7 +288,7 @@ def test_adaptive_resume_candidates_include_segment_integrity(monkeypatch) -> No
         ["AAPL"],
         [250],
         target_date=target_date,
-        calculation_version="adaptive_segmentation_v3",
+        calculation_version="adaptive_segmentation_v4",
     )
 
     assert result == [expected]
@@ -293,7 +299,7 @@ def test_adaptive_resume_candidates_include_segment_integrity(monkeypatch) -> No
     assert params == (
         ["AAPL"],
         [250],
-        "adaptive_segmentation_v3",
+        "adaptive_segmentation_v4",
         target_date,
         target_date,
     )

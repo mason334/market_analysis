@@ -54,7 +54,7 @@ def test_v_shape_finds_unconfigured_turning_point() -> None:
     assert segments[1]["log_slope_per_bar"] > 0
     assert summary["bic_improvement"] > 0
     assert summary["method"] == "continuous_piecewise_log_linear_deterministic_hybrid_bic"
-    assert summary["calculation_version"] == "adaptive_segmentation_v3"
+    assert summary["calculation_version"] == "adaptive_segmentation_v4"
     assert summary["search_mode"] == "exact"
     assert summary["is_global_optimum"] is True
 
@@ -281,7 +281,34 @@ def test_reconstruct_fit_matches_segmentation_window() -> None:
     ]
     assert len(fit) == 40
     assert np.isfinite(fit.to_numpy()).all()
-    assert all(np.isfinite(float(row["fitted_anchor_log_price"])) for row in segments)
+    assert all(np.isfinite(float(row["fitted_anchor_log_offset"])) for row in segments)
+
+
+def test_scale_change_preserves_structure_and_normalized_fit() -> None:
+    down = 4.5 - 0.02 * np.arange(23)
+    up = down[-1] + 0.03 * np.arange(1, 18)
+    frame = _frame(np.concatenate((down, up)))
+
+    original_summary, original_segments = compute_adaptive_segmentation(
+        "TEST", frame, 40
+    )
+    scaled_summary, scaled_segments = compute_adaptive_segmentation(
+        "TEST", frame.assign(close=frame["close"] * 0.25), 40
+    )
+
+    assert original_summary is not None
+    assert scaled_summary is not None
+    assert original_summary["segment_count"] == scaled_summary["segment_count"]
+    for original, scaled in zip(original_segments, scaled_segments, strict=True):
+        for field in (
+            "start_bar_index",
+            "end_bar_index",
+            "log_slope_per_bar",
+            "linearity_r2",
+            "fitted_log_return",
+            "fitted_anchor_log_offset",
+        ):
+            assert scaled[field] == pytest.approx(original[field])
 
 
 @pytest.mark.parametrize(

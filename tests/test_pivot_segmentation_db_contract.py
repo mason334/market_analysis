@@ -48,6 +48,8 @@ def _summary(lookback_bars: int = 30) -> dict[str, Any]:
         "observation_count": lookback_bars,
         "window_close_min": 50.0,
         "window_close_max": 75.0,
+        "fit_reference_date": date(2026, 2, 12),
+        "price_source": "tiingo",
         "pivot_count": 0,
         "segment_count": 1,
         "fit_rss": 0.01,
@@ -56,9 +58,9 @@ def _summary(lookback_bars: int = 30) -> dict[str, Any]:
         "classification_config": {"min_abs_fitted_log_return": 0.02},
         "resolution_diagnostics": {"selected_pivot_count": 0},
         "source_segmentation_method": "source_method",
-        "source_segmentation_calculation_version": "adaptive_segmentation_v3",
+        "source_segmentation_calculation_version": "adaptive_segmentation_v4",
         "method": "pivot_seeded_independent_piecewise_log_linear",
-        "calculation_version": "pivot_refined_segmentation_v3",
+        "calculation_version": "pivot_refined_segmentation_v4",
     }
 
 
@@ -79,9 +81,11 @@ def _segment(lookback_bars: int = 30) -> dict[str, Any]:
         "segment_type": "up",
         "log_slope_per_bar": 0.01,
         "linearity_r2": 0.9,
-        "fitted_start_log_price": 4.0,
-        "fitted_end_log_price": 4.29,
+        "fitted_start_log_price": None,
+        "fitted_end_log_price": None,
         "fitted_log_return": 0.29,
+        "fitted_start_log_offset": -0.29,
+        "fitted_end_log_offset": 0.0,
         "actual_start_log_price": 4.0,
         "actual_end_log_price": 4.28,
         "actual_start_close": 54.6,
@@ -100,7 +104,7 @@ def _segment(lookback_bars: int = 30) -> dict[str, Any]:
         "pivot_source_segment_indices": [],
         "pivot_resolution_status": None,
         "method": "pivot_seeded_independent_piecewise_log_linear",
-        "calculation_version": "pivot_refined_segmentation_v3",
+        "calculation_version": "pivot_refined_segmentation_v4",
     }
 
 
@@ -123,10 +127,11 @@ def test_pivot_upsert_replaces_detail_rows_and_writes_two_tables(monkeypatch) ->
         for item in connection.executions
         if "INSERT INTO pivot_segment_daily" in item[0]
     )
-    assert len(summary_execution[1] or ()) == 18
+    assert len(summary_execution[1] or ()) == 23
     assert (summary_execution[1] or ())[2:5] == (250, 30, 30)
     assert (summary_execution[1] or ())[5:7] == (50.0, 75.0)
-    assert len(segment_execution[1] or ()) == 37
+    assert (summary_execution[1] or ())[8:11] == (None, None, None)
+    assert len(segment_execution[1] or ()) == 39
 
 
 def test_pivot_upsert_keeps_complete_multi_lookback_set(monkeypatch) -> None:
@@ -171,6 +176,8 @@ def test_schema_creates_pivot_summary_and_segment_tables(monkeypatch) -> None:
     assert "window_close_min" in statements
     assert "window_close_max" in statements
     assert "pivot_segmentation_window_close_bounds_check" in statements
+    assert "ADD COLUMN IF NOT EXISTS fitted_start_log_offset" in statements
+    assert "ADD COLUMN IF NOT EXISTS path_fingerprint" in statements
     assert "pivot_segment_daily_date_endpoint_type_idx" in statements
 
 

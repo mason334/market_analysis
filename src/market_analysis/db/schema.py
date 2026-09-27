@@ -14,6 +14,10 @@ CREATE TABLE IF NOT EXISTS trend_segmentation_daily (
     requested_lookback_bars   INT  NOT NULL,
     lookback_bars             INT  NOT NULL,
     observation_count         INT  NOT NULL,
+    fit_reference_date        DATE,
+    path_fingerprint          TEXT,
+    path_fingerprint_version  TEXT,
+    price_source              TEXT,
     segment_count             INT  NOT NULL,
     change_point_count        INT  NOT NULL,
     selected_rss              FLOAT,
@@ -55,6 +59,14 @@ ALTER TABLE trend_segmentation_daily
     ADD COLUMN IF NOT EXISTS search_diagnostics JSONB NOT NULL DEFAULT '[]'::jsonb;
 ALTER TABLE trend_segmentation_daily
     ADD COLUMN IF NOT EXISTS requested_lookback_bars INT;
+ALTER TABLE trend_segmentation_daily
+    ADD COLUMN IF NOT EXISTS fit_reference_date DATE;
+ALTER TABLE trend_segmentation_daily
+    ADD COLUMN IF NOT EXISTS path_fingerprint TEXT;
+ALTER TABLE trend_segmentation_daily
+    ADD COLUMN IF NOT EXISTS path_fingerprint_version TEXT;
+ALTER TABLE trend_segmentation_daily
+    ADD COLUMN IF NOT EXISTS price_source TEXT;
 UPDATE trend_segmentation_daily
     SET requested_lookback_bars = lookback_bars
     WHERE requested_lookback_bars IS NULL;
@@ -101,6 +113,7 @@ CREATE TABLE IF NOT EXISTS trend_segment_daily (
     linearity_r2                 FLOAT,
     fitted_log_return            FLOAT,
     fitted_anchor_log_price      FLOAT,
+    fitted_anchor_log_offset     FLOAT,
     actual_log_return            FLOAT,
     realized_volatility_daily    FLOAT,
     vol_adjusted_trend           FLOAT,
@@ -121,6 +134,7 @@ ALTER TABLE trend_segment_daily ADD COLUMN IF NOT EXISTS largest_move_date DATE;
 ALTER TABLE trend_segment_daily ADD COLUMN IF NOT EXISTS largest_move_bar_index INT;
 ALTER TABLE trend_segment_daily ADD COLUMN IF NOT EXISTS largest_move_path_share FLOAT;
 ALTER TABLE trend_segment_daily ADD COLUMN IF NOT EXISTS fitted_anchor_log_price FLOAT;
+ALTER TABLE trend_segment_daily ADD COLUMN IF NOT EXISTS fitted_anchor_log_offset FLOAT;
 """
 
 _CREATE_TREND_SEGMENT_DAILY_IDX = """
@@ -138,6 +152,11 @@ CREATE TABLE IF NOT EXISTS pivot_segmentation_daily (
     requested_lookback_bars                 INT   NOT NULL,
     lookback_bars                           INT   NOT NULL,
     observation_count                       INT   NOT NULL,
+    fit_reference_date                      DATE,
+    path_fingerprint                        TEXT,
+    path_fingerprint_version                TEXT,
+    source_path_fingerprint                 TEXT,
+    price_source                            TEXT,
     window_close_min                        FLOAT,
     window_close_max                        FLOAT,
     pivot_count                             INT   NOT NULL,
@@ -186,7 +205,12 @@ _ALTER_PIVOT_SEGMENTATION_DAILY = """
 ALTER TABLE pivot_segmentation_daily
     ADD COLUMN IF NOT EXISTS requested_lookback_bars INT,
     ADD COLUMN IF NOT EXISTS window_close_min FLOAT,
-    ADD COLUMN IF NOT EXISTS window_close_max FLOAT;
+    ADD COLUMN IF NOT EXISTS window_close_max FLOAT,
+    ADD COLUMN IF NOT EXISTS fit_reference_date DATE,
+    ADD COLUMN IF NOT EXISTS path_fingerprint TEXT,
+    ADD COLUMN IF NOT EXISTS path_fingerprint_version TEXT,
+    ADD COLUMN IF NOT EXISTS source_path_fingerprint TEXT,
+    ADD COLUMN IF NOT EXISTS price_source TEXT;
 UPDATE pivot_segmentation_daily
     SET requested_lookback_bars = lookback_bars
     WHERE requested_lookback_bars IS NULL;
@@ -272,6 +296,8 @@ CREATE TABLE IF NOT EXISTS pivot_segment_daily (
     linearity_r2                     FLOAT,
     fitted_start_log_price           FLOAT,
     fitted_end_log_price             FLOAT,
+    fitted_start_log_offset          FLOAT,
+    fitted_end_log_offset            FLOAT,
     fitted_log_return                FLOAT,
     actual_start_log_price           FLOAT,
     actual_end_log_price             FLOAT,
@@ -304,6 +330,12 @@ CREATE TABLE IF NOT EXISTS pivot_segment_daily (
     CHECK (pivot_source_left_type IS NULL OR pivot_source_left_type IN ('up', 'down', 'flat')),
     CHECK (pivot_source_right_type IS NULL OR pivot_source_right_type IN ('up', 'down', 'flat'))
 );
+"""
+
+_ALTER_PIVOT_SEGMENT_DAILY = """
+ALTER TABLE pivot_segment_daily
+    ADD COLUMN IF NOT EXISTS fitted_start_log_offset FLOAT,
+    ADD COLUMN IF NOT EXISTS fitted_end_log_offset FLOAT;
 """
 
 _CREATE_PIVOT_SEGMENT_DAILY_IDX = """
@@ -340,6 +372,7 @@ def init_schema() -> None:
         conn.execute(_ENSURE_PIVOT_SEGMENTATION_WINDOW_CLOSE_BOUNDS_CHECK)
         _execute_statements(conn, _CREATE_PIVOT_SEGMENTATION_DAILY_IDX)
         conn.execute(_CREATE_PIVOT_SEGMENT_DAILY)
+        _execute_statements(conn, _ALTER_PIVOT_SEGMENT_DAILY)
         _execute_statements(conn, _CREATE_PIVOT_SEGMENT_DAILY_IDX)
         conn.commit()
     log.info("db.schema.initialized")

@@ -28,7 +28,7 @@ def test_pipeline_reads_canonical_source_and_upserts_result(monkeypatch) -> None
         "lookback_bars": 30,
         "segment_count": 3,
         "method": "source_method",
-        "calculation_version": "adaptive_segmentation_v3",
+        "calculation_version": "adaptive_segmentation_v4",
     }
     source_segments = [
         {
@@ -41,7 +41,7 @@ def test_pipeline_reads_canonical_source_and_upserts_result(monkeypatch) -> None
             "fitted_log_return": fitted_return,
             "linearity_r2": 0.95,
             "vol_adjusted_trend": 2.0 if fitted_return > 0.0 else -2.0,
-            "calculation_version": "adaptive_segmentation_v3",
+            "calculation_version": "adaptive_segmentation_v4",
         }
         for index_value, start, end, fitted_return in (
             (0, 0, 9, 0.12),
@@ -49,6 +49,7 @@ def test_pipeline_reads_canonical_source_and_upserts_result(monkeypatch) -> None
             (2, 20, 29, 0.10),
         )
     ]
+    source_summary.update(fit_reference_date=snapshot_date, price_source="test")
     written: list[tuple[list[dict], list[dict]]] = []
     monkeypatch.setattr(
         settings,
@@ -101,9 +102,9 @@ def test_pipeline_reads_canonical_source_and_upserts_result(monkeypatch) -> None
     assert completed == 1
     assert len(written) == 1
     assert written[0][0][0]["requested_lookback_bars"] == 250
-    assert written[0][0][0]["calculation_version"] == "pivot_refined_segmentation_v3"
-    assert written[0][0][0]["window_close_min"] == float(close.min())
-    assert written[0][0][0]["window_close_max"] == float(close.max())
+    assert written[0][0][0]["calculation_version"] == "pivot_refined_segmentation_v4"
+    assert written[0][0][0]["price_source"] == "test"
+    assert "source_path_fingerprint" not in written[0][0][0]
     assert [row["end_point_type"] for row in written[0][1]] == [
         "high",
         "low",
@@ -142,7 +143,7 @@ def _source_summary(
         "lookback_bars": lookback_bars,
         "segment_count": 1,
         "method": "source_method",
-        "calculation_version": "adaptive_segmentation_v3",
+        "calculation_version": "adaptive_segmentation_v4",
     }
 
 
@@ -167,6 +168,8 @@ def _computed_result(source_summary: dict) -> tuple[dict, list[dict]]:
 
 
 def _patch_pipeline_inputs(monkeypatch, snapshot_date: date, summaries: list[dict]) -> None:
+    for summary in summaries:
+        summary.update(fit_reference_date=snapshot_date, price_source="test")
     monkeypatch.setattr(
         settings,
         "indicators",

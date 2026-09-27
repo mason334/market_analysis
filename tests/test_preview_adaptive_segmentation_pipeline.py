@@ -33,7 +33,7 @@ def test_single_symbol_pipeline_returns_dashboard_json_payload(monkeypatch) -> N
     )
 
     assert result["summary"]["symbol"] == "TEST"
-    assert result["summary"]["calculation_version"] == "adaptive_segmentation_v3"
+    assert result["summary"]["calculation_version"] == "adaptive_segmentation_v4"
     assert len(result["segments"]) == 1
     assert len(result["fitted_points"]) == 40
     assert result["fitted_points"][-1]["date"] == index[-1].date()
