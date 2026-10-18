@@ -1347,7 +1347,7 @@ v3 已增加以下摘要字段：`search_mode`、`is_global_optimum`、`candidat
 
 - **方案名称**：Pivot 区间独立回归
 - **方案编号**：`MA-PSR-LOCAL`
-- **版本号**：`v1.0.0`
+- **版本号**：`v1.1.0`
 - **状态**：已实施
 - **确认日期**：2026-08-20
 - **实施日期**：2026-08-20
@@ -1855,7 +1855,7 @@ Pivot pipeline 按快照日期与计算版本接续所有已持久化窗口，�
 
 - **方案名称**：Pivot 多窗口原子持久化
 - **方案编号**：`MA-PIVOT-MULTI-LB-001`
-- **版本号**：`v1.0.0`
+- **版本号**：`v1.1.1`
 - **状态**：已实施
 - **确认日期**：2026-08-16
 - **实施日期**：2026-08-16
@@ -1896,7 +1896,7 @@ Pipeline 先按 symbol 聚合同一快照日期的所有 `adaptive_segmentation_
 
 - **方案名称**：Pivot 页面参数化行情分析执行
 - **方案编号**：`MS-ANALYSIS-RUN-01`
-- **版本号**：`v1.0.0`
+- **版本号**：`v1.2.0`
 - **状态**：已实施
 - **确认日期**：2026-08-16
 - **实施日期**：2026-08-16
@@ -2059,3 +2059,42 @@ Rich 进度条与逐 symbol 可读结果行。market_data 的 structlog 继续�
 变更文件的 Ruff 检查均通过。该方案不修改数据库 schema、计算版本、抓取范围、跳过条件、CLI 命令名
 或参数。`investment_dashboard` 无需修改代码；其非 TTY terminal 继续显示逐行日志，而 Rich 动态
 进度条只保证在真实 terminal 中呈现。
+
+## 24. 手动 Pivot 双阶段分析
+
+- **方案名称**：手动 Pivot 双阶段分析模块
+- **方案编号**：`MA-MANUAL-PIVOT`
+- **版本号**：`v1.5.0`
+- **状态**：已实施
+
+`compute-manual-pivot-analysis` 是单 symbol、只读的两阶段 JSON 接口。Pipeline 一次读取配置价格源的
+OHLCV，按包含边界的日期范围截取 40～500 个 observations，先调用
+`compute_adaptive_segmentation()`，再将内存中的 summary 和 segments 直接传给
+`compute_pivot_segmentation()`。两阶段拟合曲线均在 Pipeline 中重建并序列化。
+
+该命令不调用 `init_schema()`、任何 `upsert_*()` 或生产批处理函数。Adaptive 参数与 Pivot 参数使用
+不同 CLI 前缀；未显式传入的值由 Pipeline 从 `config/settings.yaml` 解析。固定的搜索机制仍由
+Adaptive `search` 配置管理，避免把确定性和计算预算相关的内部机制变成页面随意参数。
+
+下游 `investment_dashboard` 新增独立“手动 Pivot 分析”页面，只在用户明确点击后通过参数列表调用
+该命令。Dashboard 校验固定 JSON 契约并负责图表和下载，不 import 本项目模块，也不把结果写回数据库。
+
+`v1.1.0` 将 Dashboard 默认模式改为不传算法覆盖参数。每次执行由新的 CLI 进程重新读取 YAML；
+Adaptive 的 `max_segments_cap` 按本次实际 observations 调用 `recommended_max_segments()`，与生产
+自动分析的短历史窗口口径一致。自定义模式仍可显式覆盖全部页面开放参数。
+
+`v1.1.1` 仅修复 Dashboard 模式选择器的 Streamlit 表单交互，不改变上游 CLI、JSON 或算法口径。
+
+`v1.2.0` 将 Dashboard 的 symbol 自由文本改为可搜索候选选择器。候选直接读取
+`price_update_candidates_current`，并要求至少存在 40 条 Tiingo 分复权日线；候选项展示历史覆盖范围。
+该版本不改变本项目 CLI、JSON 契约、算法口径或数据库 schema。
+
+`v1.2.1` 仅修复 Dashboard 中选择 symbol 后提交按钮仍保持禁用的问题，不改变上游 CLI、JSON 契约、
+算法口径或数据库 schema。
+
+`v1.3.0` 在 Dashboard 手动结果图中增加展示用支撑/压力线：内部 `high` Pivot 当日真实 close 为
+压力位，内部 `low` Pivot 当日真实 close 为支撑位，均从 Pivot 日期延伸到窗口末日。展示直接复用
+CLI 返回的 OHLCV 和 Pivot segments，不增加查询或持久化，也不改变上游接口与算法口径。
+
+`v1.5.0` 在 Dashboard 统一手动分析与 Pivot 快照详情的四个明细页签，并抽取共享的 Pivot level
+派生、图表图层和表格组件；`v1.4.0` 提案已合并，不单独实施。本项目接口、算法与数据库契约不变。

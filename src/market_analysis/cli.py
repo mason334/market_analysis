@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import atexit
 import json
+import sys
+from contextlib import redirect_stdout
 from datetime import date
 from pathlib import Path
 
@@ -116,6 +118,62 @@ def compute_adaptive_segmentation_cmd(
         bic_penalty_multiplier=bic_penalty_multiplier,
         target_date=date.fromisoformat(target_date) if target_date else None,
     )
+    typer.echo(json.dumps(result, default=str, allow_nan=False, separators=(",", ":")))
+
+
+@app.command("compute-manual-pivot-analysis")
+def compute_manual_pivot_analysis_cmd(
+    symbol: str = typer.Option(..., "--symbol", help="Ticker symbol."),
+    start_date: str = typer.Option(..., "--start-date", help="Inclusive start date."),
+    end_date: str = typer.Option(..., "--end-date", help="Inclusive end date."),
+    adaptive_min_segment_bars: int | None = typer.Option(
+        None, "--adaptive-min-segment-bars", min=2, max=30
+    ),
+    adaptive_max_segments: int | None = typer.Option(
+        None, "--adaptive-max-segments", min=1, max=20
+    ),
+    adaptive_bic_penalty_multiplier: float | None = typer.Option(
+        None, "--adaptive-bic-penalty-multiplier", min=0.1, max=10.0
+    ),
+    pivot_search_radius_bars: int | None = typer.Option(
+        None, "--pivot-search-radius-bars", min=0, max=30
+    ),
+    pivot_min_segment_bars: int | None = typer.Option(
+        None, "--pivot-min-segment-bars", min=2, max=30
+    ),
+    pivot_min_abs_fitted_log_return: float | None = typer.Option(
+        None, "--pivot-min-abs-fitted-log-return", min=0.0, max=1.0
+    ),
+    pivot_min_linearity_r2: float | None = typer.Option(
+        None, "--pivot-min-linearity-r2", min=0.0, max=1.0
+    ),
+    pivot_min_abs_vol_adjusted_trend: float | None = typer.Option(
+        None, "--pivot-min-abs-vol-adjusted-trend", min=0.0, max=10.0
+    ),
+) -> None:
+    """Compute one read-only adaptive plus Pivot analysis and emit JSON."""
+    from market_analysis.pipeline.preview_manual_pivot_analysis import (
+        compute_manual_pivot_analysis_for_symbol,
+    )
+
+    try:
+        with redirect_stdout(sys.stderr):
+            result = compute_manual_pivot_analysis_for_symbol(
+                symbol,
+                start_date=date.fromisoformat(start_date),
+                end_date=date.fromisoformat(end_date),
+                adaptive_min_segment_bars=adaptive_min_segment_bars,
+                adaptive_max_segments=adaptive_max_segments,
+                adaptive_bic_penalty_multiplier=adaptive_bic_penalty_multiplier,
+                pivot_search_radius_bars=pivot_search_radius_bars,
+                pivot_min_segment_bars=pivot_min_segment_bars,
+                pivot_min_abs_fitted_log_return=pivot_min_abs_fitted_log_return,
+                pivot_min_linearity_r2=pivot_min_linearity_r2,
+                pivot_min_abs_vol_adjusted_trend=pivot_min_abs_vol_adjusted_trend,
+            )
+    finally:
+        with redirect_stdout(sys.stderr):
+            _shutdown()
     typer.echo(json.dumps(result, default=str, allow_nan=False, separators=(",", ":")))
 
 

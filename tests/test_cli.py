@@ -18,6 +18,7 @@ def test_cli_exposes_only_current_segmentation_workflows() -> None:
         "run-adaptive-segmentation",
         "run-pivot-segmentation",
         "compute-adaptive-segmentation",
+        "compute-manual-pivot-analysis",
         "validate-adaptive-segmentation",
     ):
         assert command in result.stdout
@@ -94,3 +95,65 @@ def test_run_adaptive_segmentation_without_options_keeps_config_defaults(
 
     assert result.exit_code == 0
     assert calls == [(None, None, False, True)]
+
+
+def test_compute_manual_pivot_analysis_passes_all_parameters(monkeypatch) -> None:
+    from market_analysis.pipeline import preview_manual_pivot_analysis
+
+    calls: list[dict[str, object]] = []
+
+    def compute(symbol: str, **kwargs: object) -> dict[str, object]:
+        calls.append({"symbol": symbol, **kwargs})
+        return {"ok": True}
+
+    monkeypatch.setattr(
+        preview_manual_pivot_analysis,
+        "compute_manual_pivot_analysis_for_symbol",
+        compute,
+    )
+    result = CliRunner().invoke(
+        cli.app,
+        [
+            "compute-manual-pivot-analysis",
+            "--symbol",
+            "AAPL",
+            "--start-date",
+            "2026-01-02",
+            "--end-date",
+            "2026-08-14",
+            "--adaptive-min-segment-bars",
+            "6",
+            "--adaptive-max-segments",
+            "8",
+            "--adaptive-bic-penalty-multiplier",
+            "3.0",
+            "--pivot-search-radius-bars",
+            "7",
+            "--pivot-min-segment-bars",
+            "6",
+            "--pivot-min-abs-fitted-log-return",
+            "0.03",
+            "--pivot-min-linearity-r2",
+            "0.45",
+            "--pivot-min-abs-vol-adjusted-trend",
+            "1.0",
+        ],
+    )
+
+    assert result.exit_code == 0
+    assert calls == [
+        {
+            "symbol": "AAPL",
+            "start_date": date(2026, 1, 2),
+            "end_date": date(2026, 8, 14),
+            "adaptive_min_segment_bars": 6,
+            "adaptive_max_segments": 8,
+            "adaptive_bic_penalty_multiplier": 3.0,
+            "pivot_search_radius_bars": 7,
+            "pivot_min_segment_bars": 6,
+            "pivot_min_abs_fitted_log_return": 0.03,
+            "pivot_min_linearity_r2": 0.45,
+            "pivot_min_abs_vol_adjusted_trend": 1.0,
+        }
+    ]
+    assert '"ok":true' in result.stdout

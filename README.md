@@ -104,6 +104,7 @@ market_analysis/
 │       ├── _price_path.py
 │       ├── _progress.py
 │       ├── preview_adaptive_segmentation.py
+│       ├── preview_manual_pivot_analysis.py
 │       ├── run_adaptive_segmentation.py
 │       ├── run_pivot_segmentation.py
 │       └── evaluate_adaptive_segmentation.py
@@ -118,6 +119,7 @@ market_analysis/
 ### `pipeline/`
 
 - `preview_adaptive_segmentation.py`：对单只标的执行只读预览，返回 JSON，不写数据库。
+- `preview_manual_pivot_analysis.py`：对单只标的执行只读 Adaptive + Pivot 双阶段分析。
 - `run_adaptive_segmentation.py`：批量运行自适应初分段，支持 fallback、续跑和强制重算。
 - `run_pivot_segmentation.py`：读取已持久化的初分段，批量生成并写入 Pivot 精炼快照。
 - `evaluate_adaptive_segmentation.py`：执行参数组合与历史稳定性评估，生成 CSV 和 HTML 报告。
@@ -309,6 +311,40 @@ market-analysis compute-adaptive-segmentation \
 ```
 
 预览命令返回 summary、segments、fitted points 和耗时，不写入数据库。
+
+计算单只标的、自定义日期范围的只读 Adaptive + Pivot 分析：
+
+```bash
+market-analysis compute-manual-pivot-analysis \
+  --symbol AAPL \
+  --start-date 2025-01-02 \
+  --end-date 2025-12-31 \
+  --adaptive-min-segment-bars 5 \
+  --adaptive-max-segments 10 \
+  --adaptive-bic-penalty-multiplier 2.0 \
+  --pivot-search-radius-bars 5 \
+  --pivot-min-segment-bars 5 \
+  --pivot-min-abs-fitted-log-return 0.02 \
+  --pivot-min-linearity-r2 0.35 \
+  --pivot-min-abs-vol-adjusted-trend 0.75
+```
+
+该命令对应 `MA-MANUAL-PIVOT v1.5.0`。日期边界均包含，范围内实际 observations 必须为
+40～500。命令只读取 `market_data`，依次运行自适应分段和 Pivot 精炼，以固定 JSON 契约返回
+OHLCV、两阶段 summary、segments、拟合点、最终解析参数和耗时，不初始化 schema，也不写入四张
+生产分段表。未传入可选算法参数时，每个新 CLI 进程从 `config/settings.yaml` 解析生产默认值；
+`max_segments_cap` 按实际窗口套用与自动分析相同的动态推荐逻辑。
+
+`v1.2.0` 仅在下游 Dashboard 将 symbol 输入改为读取 `price_update_candidates_current` 的可搜索
+候选选择器；本项目 CLI、JSON 契约和计算口径不变。
+
+`v1.2.1` 仅修复下游 Dashboard 表单提交按钮的禁用状态，不改变本项目代码或接口。
+
+`v1.3.0` 仅在下游 Dashboard 使用 CLI 已返回的 OHLCV 和内部 high/low Pivot 绘制支撑/压力线；
+本项目 CLI、JSON 契约和计算口径不变。
+
+`v1.5.0` 仅在下游 Dashboard 统一手动分析与持久化快照详情的四个明细页签，并复用 Pivot level
+派生、图表图层和表格组件；`v1.4.0` 提案已合并。本项目 CLI、JSON 契约和计算口径不变。
 
 生成只读参数评估报告：
 
