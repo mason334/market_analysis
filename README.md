@@ -131,8 +131,10 @@ market_analysis/
 
 当前计算版本为 `adaptive_segmentation_v4`。
 
-- 默认请求窗口为 250 bars。
-- 历史不足 250 bars、但至少达到 40 bars 时，使用实际可用窗口生成 fallback 快照。
+- 当前配置请求窗口为 125 和 250 bars，分别计算；命令行 `--lookback` 会覆盖本次窗口配置。
+- 历史不足请求窗口、但至少达到 40 bars 时，使用实际可用窗口生成 fallback 快照。
+- 两个请求退化为相同实际窗口时，只保存一份并归属较大请求窗口。Dashboard 的
+  `MA-PIVOT-WATCH v4.0.0` 支持窗口切换，缺失窗口明确提示，不自动替代。
 - 在 log close 路径上执行连续分段线性回归，拟合路径在断点处连续。
 - 候选规模不超过预算时执行精确枚举；超过预算时使用确定性 beam search 和局部优化。
 - 使用带可配置惩罚倍数的 BIC 在不同分段数之间选择模型。
@@ -255,7 +257,7 @@ SOURCE_DB_NAME=market_data
 ```yaml
 indicators:
   adaptive_segmentation:
-    lookbacks: [250]
+    lookbacks: [250, 125]
     min_fallback_bars: 40
     min_segment_bars: 5
     max_segments_cap: 10

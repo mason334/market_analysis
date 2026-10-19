@@ -165,6 +165,9 @@ def test_resolve_effective_lookbacks_uses_available_bars_and_deduplicates() -> N
     assert pipeline._resolve_effective_lookbacks([250], 40, 40) == [40]
     assert pipeline._resolve_effective_lookbacks([250], 39, 40) == []
     assert pipeline._resolve_requested_lookbacks([100, 250], 65, 40) == {65: 250}
+    assert pipeline._resolve_requested_lookbacks([250, 125], 300, 40) == {250: 250, 125: 125}
+    assert pipeline._resolve_requested_lookbacks([250, 125], 100, 40) == {100: 250}
+    assert pipeline._resolve_requested_lookbacks([125, 250], 100, 40) == {100: 250}
 
 
 def test_pipeline_uses_filtered_available_history_for_fallback(monkeypatch) -> None:

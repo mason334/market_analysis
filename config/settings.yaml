@@ -1,6 +1,6 @@
 indicators:
   adaptive_segmentation:
-    lookbacks: [250]
+    lookbacks: [250, 125]
     min_fallback_bars: 40
     min_segment_bars: 5
     max_segments_cap: 10
