@@ -78,6 +78,13 @@ def run_pivot_segmentation_cmd(
         "-d",
         help="Adaptive segmentation snapshot date; defaults to the latest snapshot.",
     ),
+    lookback: int | None = typer.Option(
+        None,
+        "--lookback",
+        min=40,
+        max=500,
+        help="Optional requested adaptive lookback; otherwise refine all windows on the date.",
+    ),
 ) -> None:
     """Refine persisted adaptive segments with close-price pivots."""
     from market_analysis.db.schema import init_schema
@@ -87,7 +94,11 @@ def run_pivot_segmentation_cmd(
 
     init_schema()
     parsed_date = None if target_date is None else date.fromisoformat(target_date)
-    total = run_pivot_segmentation_pipeline(parsed_date, show_progress=True)
+    total = run_pivot_segmentation_pipeline(
+        parsed_date,
+        requested_lookback_bars=lookback,
+        show_progress=True,
+    )
     typer.echo(f"Done. {total} symbol/lookback snapshots written to pivot tables.")
 
 

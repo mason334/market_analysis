@@ -139,16 +139,6 @@ DELETE FROM trend_segment_daily
 WHERE symbol = %s AND date = %s AND lookback_bars = %s
 """
 
-_DELETE_UNCONFIGURED_SEGMENT_LOOKBACKS = """
-DELETE FROM trend_segment_daily
-WHERE symbol = %s AND date = %s AND NOT (lookback_bars = ANY(%s))
-"""
-
-_DELETE_UNCONFIGURED_SEGMENTATION_LOOKBACKS = """
-DELETE FROM trend_segmentation_daily
-WHERE symbol = %s AND date = %s AND NOT (lookback_bars = ANY(%s))
-"""
-
 _TREND_SEGMENTATION_COLS = [
     "symbol", "date", "requested_lookback_bars", "lookback_bars",
     "observation_count",
@@ -380,16 +370,6 @@ DELETE FROM pivot_segment_daily
 WHERE symbol = %s AND date = %s AND lookback_bars = %s
 """
 
-_DELETE_UNCONFIGURED_PIVOT_SEGMENTS = """
-DELETE FROM pivot_segment_daily
-WHERE symbol = %s AND date = %s AND NOT (lookback_bars = ANY(%s))
-"""
-
-_DELETE_UNCONFIGURED_PIVOT_SUMMARIES = """
-DELETE FROM pivot_segmentation_daily
-WHERE symbol = %s AND date = %s AND NOT (lookback_bars = ANY(%s))
-"""
-
 _FETCH_PIVOT_SEGMENTATION_SNAPSHOT = """
 SELECT symbol, date, requested_lookback_bars, lookback_bars, observation_count,
        window_close_min, window_close_max,
@@ -517,7 +497,6 @@ def upsert_trend_segmentation_daily(
         return
     symbol = str(summaries[0]["symbol"])
     snapshot_date = summaries[0]["date"]
-    lookbacks = [int(row["lookback_bars"]) for row in summaries]
     if any(
         str(row["symbol"]) != symbol or row["date"] != snapshot_date for row in summaries
     ):
@@ -539,14 +518,6 @@ def upsert_trend_segmentation_daily(
         raise ValueError("Segment row counts must match summary segment_count values.")
 
     with get_conn() as conn:
-        conn.execute(
-            _DELETE_UNCONFIGURED_SEGMENT_LOOKBACKS,
-            (symbol, snapshot_date, lookbacks),
-        )
-        conn.execute(
-            _DELETE_UNCONFIGURED_SEGMENTATION_LOOKBACKS,
-            (symbol, snapshot_date, lookbacks),
-        )
         for row in summaries:
             lookback_bars = int(row["lookback_bars"])
             conn.execute(
@@ -676,7 +647,6 @@ def upsert_pivot_segmentation_daily(
         return
     symbol = str(summaries[0]["symbol"])
     snapshot_date = summaries[0]["date"]
-    lookbacks = [int(row["lookback_bars"]) for row in summaries]
     if any(
         str(row["symbol"]) != symbol or row["date"] != snapshot_date for row in summaries
     ):
@@ -713,14 +683,6 @@ def upsert_pivot_segmentation_daily(
             raise ValueError("Pivot endpoint types do not match the summary counts.")
 
     with get_conn() as conn:
-        conn.execute(
-            _DELETE_UNCONFIGURED_PIVOT_SEGMENTS,
-            (symbol, snapshot_date, lookbacks),
-        )
-        conn.execute(
-            _DELETE_UNCONFIGURED_PIVOT_SUMMARIES,
-            (symbol, snapshot_date, lookbacks),
-        )
         for row in summaries:
             lookback_bars = int(row["lookback_bars"])
             conn.execute(

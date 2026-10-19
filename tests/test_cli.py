@@ -7,6 +7,7 @@ from typer.testing import CliRunner
 from market_analysis import cli
 from market_analysis.db import schema
 from market_analysis.pipeline import run_adaptive_segmentation as adaptive_pipeline
+from market_analysis.pipeline import run_pivot_segmentation as pivot_pipeline
 
 
 def test_cli_exposes_only_current_segmentation_workflows() -> None:
@@ -95,6 +96,40 @@ def test_run_adaptive_segmentation_without_options_keeps_config_defaults(
 
     assert result.exit_code == 0
     assert calls == [(None, None, False, True)]
+
+
+def test_run_pivot_segmentation_passes_date_and_requested_lookback(monkeypatch) -> None:
+    calls = []
+    monkeypatch.setattr(schema, "init_schema", lambda: None)
+
+    def run_pipeline(target_date=None, *, requested_lookback_bars=None, show_progress=False):
+        calls.append((target_date, requested_lookback_bars, show_progress))
+        return 3
+
+    monkeypatch.setattr(pivot_pipeline, "run_pivot_segmentation_pipeline", run_pipeline)
+    result = CliRunner().invoke(
+        cli.app,
+        ["run-pivot-segmentation", "--date", "2026-08-14", "--lookback", "125"],
+    )
+
+    assert result.exit_code == 0
+    assert calls == [(date(2026, 8, 14), 125, True)]
+    assert "Done. 3 symbol/lookback snapshots written" in result.stdout
+
+
+def test_run_pivot_segmentation_without_lookback_keeps_all_windows(monkeypatch) -> None:
+    calls = []
+    monkeypatch.setattr(schema, "init_schema", lambda: None)
+
+    def run_pipeline(target_date=None, *, requested_lookback_bars=None, show_progress=False):
+        calls.append((target_date, requested_lookback_bars, show_progress))
+        return 0
+
+    monkeypatch.setattr(pivot_pipeline, "run_pivot_segmentation_pipeline", run_pipeline)
+    result = CliRunner().invoke(cli.app, ["run-pivot-segmentation"])
+
+    assert result.exit_code == 0
+    assert calls == [(None, None, True)]
 
 
 def test_compute_manual_pivot_analysis_passes_all_parameters(monkeypatch) -> None:

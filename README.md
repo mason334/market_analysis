@@ -135,6 +135,9 @@ market_analysis/
 - 历史不足请求窗口、但至少达到 40 bars 时，使用实际可用窗口生成 fallback 快照。
 - 两个请求退化为相同实际窗口时，只保存一份并归属较大请求窗口。Dashboard 的
   `MA-PIVOT-WATCH v4.0.0` 支持窗口切换，缺失窗口明确提示，不自动替代。
+- `MA-SEG-WINDOW-PERSIST v1.1.0` 起，单窗口写入只替换本次生成的窗口，不再删除同一
+  symbol/date 下的其他自适应或 Pivot 窗口。移除历史窗口必须使用单独、显式的数据维护流程。
+  `run-pivot-segmentation --lookback 125` 可只精炼指定请求窗口；省略参数仍处理当天全部窗口。
 - 在 log close 路径上执行连续分段线性回归，拟合路径在断点处连续。
 - 候选规模不超过预算时执行精确枚举；超过预算时使用确定性 beam search 和局部优化。
 - 使用带可配置惩罚倍数的 BIC 在不同分段数之间选择模型。
@@ -297,6 +300,7 @@ market-analysis run-adaptive-segmentation --date 2026-09-18 --lookback 250 --for
 ```bash
 market-analysis run-pivot-segmentation
 market-analysis run-pivot-segmentation --date 2026-09-18
+market-analysis run-pivot-segmentation --date 2026-09-18 --lookback 125
 ```
 
 未指定 `--date` 时，命令使用最新可用的自适应分段快照日期。

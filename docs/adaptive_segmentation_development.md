@@ -1,5 +1,27 @@
 # 自适应分段算法开发记录
 
+## 增量窗口持久化与定向 Pivot（MA-SEG-WINDOW-PERSIST v1.1.0）
+
+- **方案名称**：分段窗口独立持久化与 Pivot 指定窗口执行
+- **方案编号**：`MA-SEG-WINDOW-PERSIST`
+- **版本号**：`v1.1.0`
+- **状态**：已实施
+
+自适应和 Pivot 的 upsert 现在只替换本次传入的 `symbol/date/lookback_bars`：先删除该窗口旧明细，
+再 upsert 该窗口 summary 和新明细。同一 symbol/date 下未参与本次计算的其他窗口不再自动删除。
+因此 Dashboard 或 CLI 使用 `--lookback 125` 可以在保留既有 250 结果的同时追加或更新 125。
+该变更不修改四张表的 schema、主键、算法版本或 CLI；删除废弃窗口必须由单独的显式维护流程完成。
+
+重复执行方面：自适应 pipeline 会校验请求窗口、实际窗口、参数和明细完整性；本次请求的全部窗口
+都匹配时按 symbol 跳过。任一请求窗口缺失或不匹配时，该 symbol 的本次窗口集合会重新计算。
+Pivot pipeline 当前没有 resume/skip 判定：指定日期的全部现存自适应窗口都会重新计算并 upsert，
+但不会再删除未参与本次 Pivot 计算的其他窗口。
+
+`v1.1.0` 为 `run-pivot-segmentation` 增加可选 `--lookback`。该参数严格匹配自适应 summary 的
+`requested_lookback_bars`，不会按 fallback 后的实际 `lookback_bars` 猜测归属。指定窗口不存在时
+明确失败；省略参数继续处理指定日期的全部现存窗口，cron 行为不变。此筛选不构成 resume：
+指定范围内已有的 Pivot 仍会重新计算并 upsert。
+
 ## 双窗口生产配置（MA-PIVOT-WATCH v4.0.0）
 
 方案名称：Pivot 双窗口趋势观察与结构参考；状态：已实施（下游浏览器待验收）。
@@ -1859,7 +1881,7 @@ Pivot pipeline 按快照日期与计算版本接续所有已持久化窗口，�
 - `v1.1.0`：在初分段与 Pivot summary 中增加目标窗口审计字段，实际计算口径不变。
 - `v1.1.1`：补充多个目标窗口 fallback 到同一实际窗口时的去重与最大目标保留契约。
 
-## 19. 已实施：Pivot 多窗口原子持久化
+## 19. 历史方案：Pivot 多窗口原子持久化
 
 ### 19.1 方案元数据
 
@@ -1869,6 +1891,9 @@ Pivot pipeline 按快照日期与计算版本接续所有已持久化窗口，�
 - **状态**：已实施
 - **确认日期**：2026-08-16
 - **实施日期**：2026-08-16
+
+> 本节的“替换完整窗口集合”清理语义已被 `MA-SEG-WINDOW-PERSIST v1.1.0` 替代；
+> 按 symbol 聚合并在任一窗口失败时放弃本轮写入的原子计算策略仍然有效。
 
 ### 19.2 问题与原因
 
@@ -1928,15 +1953,15 @@ market-analysis run-adaptive-segmentation --date 2026-08-14 --lookback 250
 - pipeline 的 `lookback_bars` 覆盖参数同样执行 40～500 的边界校验，避免绕过 CLI 直接调用时写入
   非法请求窗口。
 
-`run-pivot-segmentation --date YYYY-MM-DD` 的既有接口不变，继续精炼该日期已经持久化的全部自适应
-窗口。此次不修改分段/Pivot 算法、计算版本、数据库 schema、主键、索引或持久化字段语义。
+历史版本中，`run-pivot-segmentation --date YYYY-MM-DD` 只支持精炼该日期全部自适应窗口。
+该限制现已被 `MA-SEG-WINDOW-PERSIST v1.1.0` 替代：可追加 `--lookback` 定向处理请求窗口；
+省略时仍处理全部窗口。不修改分段/Pivot 算法、计算版本、数据库 schema、主键或索引。
 
 ### 20.3 investment_dashboard 影响
 
-`investment_dashboard` 已同步使用新参数：自适应初分段按钮传入用户选择的截止日期和 lookback；Pivot
-按钮传入从 `trend_segmentation_daily` 的 `adaptive_segmentation_v3` 结果中选择的真实快照日期。
-下游主快照仍固定读取 `requested_lookback_bars = 250`；若用户运行其他请求窗口，该结果会被持久化并
-可执行 Pivot 精炼，但不会自动进入当前 250-bars 主快照。
+`investment_dashboard` 已同步使用新参数：自适应初分段按钮传入用户选择的截止日期和 lookback；
+Pivot 按钮从 `trend_segmentation_daily` 的 `adaptive_segmentation_v4` 结果中选择真实日期及请求窗口。
+行情快照和趋势变化页面可在 125 / 250 之间切换，默认读取 250。
 
 ## 21. 已实施：自适应分段幂等续跑与实时终端输出
 

@@ -134,7 +134,7 @@ def test_pivot_upsert_replaces_detail_rows_and_writes_two_tables(monkeypatch) ->
     assert len(segment_execution[1] or ()) == 39
 
 
-def test_pivot_upsert_keeps_complete_multi_lookback_set(monkeypatch) -> None:
+def test_pivot_upsert_preserves_lookbacks_not_in_current_write(monkeypatch) -> None:
     connection = _FakeConnection()
     monkeypatch.setattr(queries, "get_conn", lambda: connection)
 
@@ -143,15 +143,10 @@ def test_pivot_upsert_keeps_complete_multi_lookback_set(monkeypatch) -> None:
         [_segment(20), _segment(30)],
     )
 
-    cleanup_params = [
-        params
-        for statement, params in connection.executions
-        if "NOT (lookback_bars = ANY(%s))" in statement
-    ]
-    assert cleanup_params == [
-        ("TEST", date(2026, 2, 12), [20, 30]),
-        ("TEST", date(2026, 2, 12), [20, 30]),
-    ]
+    assert not any(
+        "NOT (lookback_bars = ANY(%s))" in statement
+        for statement, _ in connection.executions
+    )
     summary_inserts = [
         params
         for statement, params in connection.executions

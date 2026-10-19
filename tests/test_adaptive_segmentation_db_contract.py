@@ -125,6 +125,24 @@ def test_adaptive_upsert_replaces_segments_and_writes_both_tables(monkeypatch) -
     assert len(segment_execution[1] or ()) == 24
 
 
+def test_adaptive_upsert_does_not_delete_other_lookbacks(monkeypatch) -> None:
+    connection = _FakeConnection()
+    monkeypatch.setattr(queries, "get_conn", lambda: connection)
+
+    queries.upsert_trend_segmentation_daily([_summary()], [_segment()])
+
+    assert not any(
+        "NOT (lookback_bars = ANY(%s))" in statement
+        for statement, _ in connection.executions
+    )
+    detail_deletes = [
+        params
+        for statement, params in connection.executions
+        if "DELETE FROM trend_segment_daily" in statement
+    ]
+    assert detail_deletes == [("TEST", date(2026, 7, 15), 40)]
+
+
 def test_adaptive_upsert_rejects_mixed_snapshots(monkeypatch) -> None:
     connection = _FakeConnection()
     monkeypatch.setattr(queries, "get_conn", lambda: connection)

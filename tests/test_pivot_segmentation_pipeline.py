@@ -5,6 +5,7 @@ from unittest.mock import MagicMock
 
 import numpy as np
 import pandas as pd
+import pytest
 
 from market_analysis.config import settings
 from market_analysis.pipeline import run_pivot_segmentation as pipeline
@@ -242,6 +243,62 @@ def test_pipeline_upserts_all_symbol_lookbacks_together(monkeypatch) -> None:
     assert len(writes) == 1
     assert [row["lookback_bars"] for row in writes[0][0]] == [65, 250]
     assert [row["lookback_bars"] for row in writes[0][1]] == [65, 250]
+
+
+def test_pipeline_filters_by_requested_not_actual_lookback(monkeypatch) -> None:
+    snapshot_date = date(2026, 8, 16)
+    summaries = [
+        _source_summary(snapshot_date, "TEST", 125, 125),
+        _source_summary(snapshot_date, "TEST", 180, 250),
+    ]
+    _patch_pipeline_inputs(monkeypatch, snapshot_date, summaries)
+    frame = pd.DataFrame(
+        {"close": np.linspace(100.0, 120.0, 250)},
+        index=pd.bdate_range("2025-08-01", periods=250),
+    )
+    monkeypatch.setattr(pipeline, "fetch_ohlcv", lambda *_args, **_kwargs: frame)
+    computed = []
+
+    def compute(_symbol, _frame, source_summary, _segments, **_params):
+        computed.append(
+            (source_summary["requested_lookback_bars"], source_summary["lookback_bars"])
+        )
+        return _computed_result(source_summary)
+
+    monkeypatch.setattr(pipeline, "compute_pivot_segmentation", compute)
+    writes = []
+    monkeypatch.setattr(
+        pipeline,
+        "upsert_pivot_segmentation_daily",
+        lambda summaries, segments: writes.append((summaries, segments)),
+    )
+
+    completed = pipeline.run_pivot_segmentation_pipeline(
+        snapshot_date,
+        requested_lookback_bars=250,
+    )
+
+    assert completed == 1
+    assert computed == [(250, 180)]
+    assert writes[0][0][0]["requested_lookback_bars"] == 250
+
+
+def test_pipeline_rejects_missing_requested_lookback(monkeypatch) -> None:
+    snapshot_date = date(2026, 8, 16)
+    summaries = [_source_summary(snapshot_date, "TEST", 180, 250)]
+    _patch_pipeline_inputs(monkeypatch, snapshot_date, summaries)
+
+    with pytest.raises(ValueError, match="requested lookback 125"):
+        pipeline.run_pivot_segmentation_pipeline(
+            snapshot_date,
+            requested_lookback_bars=125,
+        )
+
+
+@pytest.mark.parametrize("lookback", [39, 501])
+def test_pipeline_rejects_requested_lookback_outside_cli_bounds(lookback) -> None:
+    with pytest.raises(ValueError, match="between 40 and 500"):
+        pipeline.run_pivot_segmentation_pipeline(requested_lookback_bars=lookback)
 
 
 def test_pipeline_discards_symbol_batch_when_one_lookback_fails(monkeypatch) -> None:

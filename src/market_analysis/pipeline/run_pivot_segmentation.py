@@ -31,14 +31,26 @@ from market_analysis.segmentation.pivot_segmentation import compute_pivot_segmen
 log = structlog.get_logger(__name__)
 
 _SOURCE_CALCULATION_VERSION = ADAPTIVE_SEGMENTATION_CALCULATION_VERSION
+_MIN_REQUESTED_LOOKBACK_BARS = 40
+_MAX_REQUESTED_LOOKBACK_BARS = 500
 
 
 def run_pivot_segmentation_pipeline(
     target_date: date | None = None,
     *,
+    requested_lookback_bars: int | None = None,
     show_progress: bool = False,
 ) -> int:
     """Build close-pivot segment snapshots from persisted adaptive segmentation."""
+    if requested_lookback_bars is not None and not (
+        _MIN_REQUESTED_LOOKBACK_BARS
+        <= requested_lookback_bars
+        <= _MAX_REQUESTED_LOOKBACK_BARS
+    ):
+        raise ValueError(
+            "requested_lookback_bars must be between "
+            f"{_MIN_REQUESTED_LOOKBACK_BARS} and {_MAX_REQUESTED_LOOKBACK_BARS}."
+        )
     snapshot_date = target_date or fetch_latest_adaptive_segmentation_date()
     if snapshot_date is None:
         raise ValueError("No adaptive segmentation snapshot is available.")
@@ -53,17 +65,31 @@ def run_pivot_segmentation_pipeline(
         row
         for row in fetch_trend_segmentation_snapshot(snapshot_date)
         if row.get("calculation_version") == _SOURCE_CALCULATION_VERSION
+        and (
+            requested_lookback_bars is None
+            or int(row["requested_lookback_bars"]) == requested_lookback_bars
+        )
     ]
     if not summaries:
-        raise ValueError(
-            f"No {_SOURCE_CALCULATION_VERSION} summaries found for {snapshot_date}."
+        window_label = (
+            "all requested windows"
+            if requested_lookback_bars is None
+            else f"requested lookback {requested_lookback_bars}"
         )
+        raise ValueError(
+            f"No {_SOURCE_CALCULATION_VERSION} summaries found for {snapshot_date} "
+            f"and {window_label}."
+        )
+    selected_actual_lookbacks = {
+        (str(row["symbol"]), int(row["lookback_bars"])) for row in summaries
+    }
     segments_by_key: dict[tuple[str, int], list[dict[str, Any]]] = defaultdict(list)
     for row in fetch_trend_segment_snapshot(snapshot_date):
         if row.get("calculation_version") != _SOURCE_CALCULATION_VERSION:
             continue
         key = (str(row["symbol"]), int(row["lookback_bars"]))
-        segments_by_key[key].append(row)
+        if key in selected_actual_lookbacks:
+            segments_by_key[key].append(row)
     summaries_by_symbol: dict[str, list[dict[str, Any]]] = defaultdict(list)
     for row in summaries:
         summaries_by_symbol[str(row["symbol"])].append(row)
@@ -72,6 +98,7 @@ def run_pivot_segmentation_pipeline(
         "pivot_segmentation.start",
         date=str(snapshot_date),
         summaries=len(summaries),
+        requested_lookback_bars=requested_lookback_bars,
         lookbacks=sorted({int(row["lookback_bars"]) for row in summaries}),
     )
     progress = (
