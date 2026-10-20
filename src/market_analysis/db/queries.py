@@ -39,6 +39,78 @@ GROUP BY requested.symbol
 ORDER BY requested.symbol
 """
 
+_FETCH_SOURCE_TRADING_DATES = """
+SELECT date
+FROM daily_bars_split_adjusted
+WHERE symbol = %s
+  AND source = %s
+  AND date BETWEEN %s AND %s
+ORDER BY date
+"""
+
+_FETCH_SEGMENTATION_BACKFILL_COUNTS = """
+WITH valid_adaptive AS (
+    SELECT summary.symbol, summary.date, summary.requested_lookback_bars,
+           summary.lookback_bars
+    FROM trend_segmentation_daily AS summary
+    JOIN trend_segment_daily AS segment
+      ON segment.symbol = summary.symbol
+     AND segment.date = summary.date
+     AND segment.lookback_bars = summary.lookback_bars
+     AND segment.calculation_version = summary.calculation_version
+    WHERE summary.date = %s
+      AND summary.requested_lookback_bars = %s
+      AND summary.calculation_version = %s
+      AND summary.price_source = %s
+      AND summary.fit_reference_date = summary.date
+    GROUP BY summary.symbol, summary.date, summary.requested_lookback_bars,
+             summary.lookback_bars, summary.segment_count,
+             summary.change_point_count
+    HAVING COUNT(*) = summary.segment_count
+       AND COUNT(DISTINCT segment.segment_index) = summary.segment_count
+       AND MIN(segment.segment_index) = 0
+       AND MAX(segment.segment_index) = summary.segment_count - 1
+       AND summary.change_point_count = summary.segment_count - 1
+       AND BOOL_AND(segment.method = summary.method)
+),
+valid_pivot AS (
+    SELECT summary.symbol, summary.date, summary.requested_lookback_bars,
+           summary.lookback_bars
+    FROM pivot_segmentation_daily AS summary
+    JOIN pivot_segment_daily AS segment
+      ON segment.symbol = summary.symbol
+     AND segment.date = summary.date
+     AND segment.lookback_bars = summary.lookback_bars
+     AND segment.calculation_version = summary.calculation_version
+    JOIN valid_adaptive AS adaptive
+      ON adaptive.symbol = summary.symbol
+     AND adaptive.date = summary.date
+     AND adaptive.requested_lookback_bars = summary.requested_lookback_bars
+     AND adaptive.lookback_bars = summary.lookback_bars
+    WHERE summary.calculation_version = %s
+      AND summary.source_segmentation_calculation_version = %s
+      AND summary.price_source = %s
+      AND summary.fit_reference_date = summary.date
+    GROUP BY summary.symbol, summary.date, summary.requested_lookback_bars,
+             summary.lookback_bars, summary.segment_count, summary.pivot_count
+    HAVING COUNT(*) = summary.segment_count
+       AND COUNT(DISTINCT segment.segment_index) = summary.segment_count
+       AND MIN(segment.segment_index) = 0
+       AND MAX(segment.segment_index) = summary.segment_count - 1
+       AND summary.pivot_count = summary.segment_count - 1
+       AND BOOL_AND(segment.method = summary.method)
+       AND BOOL_AND(
+           CASE
+               WHEN segment.segment_index = summary.segment_count - 1
+                   THEN segment.end_point_type = 'window_end'
+               ELSE segment.end_point_type IN ('high', 'low')
+           END
+       )
+)
+SELECT (SELECT COUNT(*) FROM valid_adaptive) AS adaptive_count,
+       (SELECT COUNT(*) FROM valid_pivot) AS pivot_count
+"""
+
 _FETCH_ADAPTIVE_CLOSE_WINDOW = """
 SELECT date, close
 FROM (
@@ -463,6 +535,49 @@ def fetch_adaptive_input_metadata(
         str(symbol): (latest_date, int(available_bars))
         for symbol, latest_date, available_bars in rows
     }
+
+
+def fetch_source_trading_dates(
+    start_date: date,
+    end_date: date,
+    *,
+    source: str,
+    calendar_symbol: str = "SPY",
+) -> list[date]:
+    """Return observed sessions for a liquid calendar symbol in the source database."""
+    with get_source_conn() as conn:
+        rows = conn.execute(
+            _FETCH_SOURCE_TRADING_DATES,
+            (calendar_symbol, source, start_date, end_date),
+        ).fetchall()
+    return [row[0] for row in rows]
+
+
+def fetch_segmentation_backfill_counts(
+    target_date: date,
+    requested_lookback_bars: int,
+    *,
+    source: str,
+    adaptive_calculation_version: str,
+    pivot_calculation_version: str,
+) -> tuple[int, int]:
+    """Count structurally complete adaptive and matching Pivot snapshots."""
+    with get_conn() as conn:
+        row = conn.execute(
+            _FETCH_SEGMENTATION_BACKFILL_COUNTS,
+            (
+                target_date,
+                requested_lookback_bars,
+                adaptive_calculation_version,
+                source,
+                pivot_calculation_version,
+                adaptive_calculation_version,
+                source,
+            ),
+        ).fetchone()
+    if row is None:
+        return 0, 0
+    return int(row[0]), int(row[1])
 
 
 def fetch_adaptive_close_window(

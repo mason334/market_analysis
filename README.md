@@ -305,6 +305,35 @@ market-analysis run-pivot-segmentation --date 2026-09-18 --lookback 125
 
 未指定 `--date` 时，命令使用最新可用的自适应分段快照日期。
 
+### 历史缺口回填
+
+`MA-SEG-BACKFILL v1.1.0` 用于按交易日补齐 125/250 bars 的自适应初分段和 Pivot 精炼结果：
+
+```bash
+.venv/bin/python scripts/backfill_segmentation_history.py \
+  --start-date 2026-09-25
+```
+
+`--end-date` 默认使用运行当天，并由 `market_data` 中 SPY 的实际行情日期限制；也可以显式指定：
+
+```bash
+.venv/bin/python scripts/backfill_segmentation_history.py \
+  --start-date 2026-09-25 \
+  --end-date 2026-10-20
+```
+
+脚本只遍历 SPY 实际存在行情的交易日，并要求生产配置中的 lookback 恰好为 125 和 250。每个日期先按
+现有续跑规则检查自适应 summary 和 segments；完整日期不会重新计算。Pivot 按日期和请求窗口检查
+summary/segments 的版本、价格源、数量、连续索引和端点类型，完整窗口直接跳过；缺失或不完整窗口在
+自适应结果补齐后重新精炼，并在写入后再次校验。脚本与日常 cron 共用
+`.market_analysis_segmentation.lock`，不能和日常任务并发运行。锁实现同时支持 Linux 的 `fcntl` 和
+Windows 的 `msvcrt`；Windows 本机可使用以下命令回填 `.env` 指向的本地数据库：
+
+```powershell
+.\.venv\Scripts\python.exe scripts\backfill_segmentation_history.py `
+  --start-date 2026-09-25
+```
+
 计算单只标的的只读 JSON 预览：
 
 ```bash

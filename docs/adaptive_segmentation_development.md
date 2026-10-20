@@ -1,5 +1,23 @@
 # 自适应分段算法开发记录
 
+## 双窗口历史幂等回填（MA-SEG-BACKFILL v1.1.0）
+
+- **方案名称**：125/250 bars 自适应与 Pivot 历史缺口回填
+- **方案编号**：`MA-SEG-BACKFILL`
+- **版本号**：`v1.1.0`
+- **状态**：已实施
+
+`scripts/backfill_segmentation_history.py` 从指定起始日到结束日读取 SPY 在配置价格源中的实际交易日，
+逐日检查 125/250 两个请求窗口。自适应结果按当前生产 universe、目标日可用历史和 fallback 去重规则
+计算预期数量；完整日期直接跳过，不完整日期调用现有续跑 pipeline，只补参数或明细不匹配的标的。
+Pivot 以结构完整且匹配 v4 自适应源的快照数量为准，完整的日期/窗口跳过，缺失窗口定向重算后再次
+校验。回填脚本与日常 cron 共用 `.market_analysis_segmentation.lock`，避免两个写入流程并发。
+锁在 Linux/Unix 使用非阻塞 `fcntl.flock`，在 Windows 使用非阻塞 `msvcrt.locking`；关闭锁文件后
+由操作系统释放，因此同一脚本可用于 pn64 和 Windows 本机数据库。
+
+该方案不修改四张表的 schema、主键、字段语义、计算版本或现有 CLI；下游
+`investment_dashboard` 无需修改，回填成功后会通过既有 v4 查询自动看到新增日期和窗口。
+
 ## 增量窗口持久化与定向 Pivot（MA-SEG-WINDOW-PERSIST v1.1.0）
 
 - **方案名称**：分段窗口独立持久化与 Pivot 指定窗口执行

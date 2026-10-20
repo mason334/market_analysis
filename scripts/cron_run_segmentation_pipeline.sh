@@ -15,11 +15,11 @@
 #   - 不需要在本脚本中额外运行 market-analysis init-db
 #
 # 建议的 crontab：
-#   0 11 * * 2-6 /usr/bin/env bash /path/to/market_analysis/scripts/cron_run_segmentation_pipeline.sh
+#   0 12 * * 2-6 /usr/bin/env bash /path/to/market_analysis/scripts/cron_run_segmentation_pipeline.sh
 #
 # 上述时间表示：
 #   - 每周二至周六
-#   - 北京时间 11:00
+#   - 北京时间 12:00
 #   - 在 10:00 的 market_data 每日更新任务之后执行
 #
 # 本脚本只执行当前生产范围内的两阶段分段流程。
