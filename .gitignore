@@ -13,3 +13,4 @@ logs/
 *.pid
 artifacts/
 .claude/settings.local.json
+*.lock
