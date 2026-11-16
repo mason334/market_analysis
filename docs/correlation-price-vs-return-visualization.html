@@ -1,0 +1,768 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Pearson Correlation：价格与收益率的视觉解释</title>
+  <style>
+    :root {
+      color-scheme: light dark;
+      --bg: #f5f7fb;
+      --panel: #ffffff;
+      --panel-2: #f8fafc;
+      --text: #162033;
+      --muted: #64748b;
+      --border: #d9e0ea;
+      --grid: #e7ebf1;
+      --x: #2563eb;
+      --y: #e11d48;
+      --positive: #059669;
+      --negative: #dc2626;
+      --accent: #7c3aed;
+      --warning: #d97706;
+      --shadow: 0 12px 30px rgba(15, 23, 42, 0.08);
+    }
+
+    @media (prefers-color-scheme: dark) {
+      :root {
+        --bg: #0c1322;
+        --panel: #121b2c;
+        --panel-2: #172235;
+        --text: #e8edf5;
+        --muted: #9aa8bd;
+        --border: #2b3a52;
+        --grid: #243248;
+        --x: #60a5fa;
+        --y: #fb7185;
+        --positive: #34d399;
+        --negative: #f87171;
+        --accent: #a78bfa;
+        --warning: #fbbf24;
+        --shadow: 0 12px 30px rgba(0, 0, 0, 0.28);
+      }
+    }
+
+    * { box-sizing: border-box; }
+
+    body {
+      margin: 0;
+      background: var(--bg);
+      color: var(--text);
+      font-family: Inter, "Segoe UI", "Microsoft YaHei", system-ui, sans-serif;
+      line-height: 1.55;
+    }
+
+    button { font: inherit; }
+
+    .page {
+      width: min(1500px, 100%);
+      margin: 0 auto;
+      padding: 28px;
+    }
+
+    header {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) auto;
+      gap: 24px;
+      align-items: start;
+      margin-bottom: 22px;
+    }
+
+    h1, h2, h3, p { margin: 0; }
+    h1 { font-size: clamp(25px, 3vw, 40px); font-weight: 600; letter-spacing: -0.025em; }
+    h2 { font-size: 18px; font-weight: 600; }
+    h3 { font-size: 15px; font-weight: 600; }
+
+    .subtitle {
+      color: var(--muted);
+      margin-top: 7px;
+      max-width: 900px;
+    }
+
+    .doc-link {
+      display: inline-flex;
+      align-items: center;
+      min-height: 38px;
+      padding: 8px 12px;
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      color: var(--text);
+      text-decoration: none;
+      background: var(--panel);
+    }
+
+    .formula-strip {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 12px;
+      margin-bottom: 18px;
+    }
+
+    .formula-step {
+      background: var(--panel);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 14px 16px;
+      box-shadow: var(--shadow);
+    }
+
+    .formula-step .number {
+      color: var(--accent);
+      font-weight: 600;
+      margin-right: 6px;
+    }
+
+    .formula-step code {
+      display: block;
+      margin-top: 7px;
+      color: var(--muted);
+      font-family: "Cascadia Code", Consolas, monospace;
+      white-space: normal;
+    }
+
+    .layout {
+      display: grid;
+      grid-template-columns: 300px minmax(0, 1fr);
+      gap: 18px;
+      align-items: start;
+    }
+
+    .sidebar {
+      position: sticky;
+      top: 14px;
+      display: grid;
+      gap: 12px;
+    }
+
+    .panel {
+      background: var(--panel);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      box-shadow: var(--shadow);
+      overflow: hidden;
+    }
+
+    .panel-body { padding: 15px; }
+    .panel-heading { margin-bottom: 10px; }
+
+    .scenario-list { display: grid; gap: 7px; }
+
+    .scenario-button {
+      width: 100%;
+      border: 1px solid transparent;
+      border-radius: 9px;
+      padding: 10px 11px;
+      text-align: left;
+      background: var(--panel-2);
+      color: var(--text);
+      cursor: pointer;
+      transition: border-color 140ms ease, transform 140ms ease, background 140ms ease;
+    }
+
+    .scenario-button:hover { border-color: var(--accent); transform: translateY(-1px); }
+    .scenario-button[aria-pressed="true"] { border-color: var(--accent); background: color-mix(in srgb, var(--accent) 12%, var(--panel)); }
+    .scenario-button strong { display: block; font-weight: 600; }
+    .scenario-button span { display: block; color: var(--muted); font-size: 12px; margin-top: 2px; }
+
+    .legend-note { color: var(--muted); font-size: 13px; }
+    .legend-row { display: flex; align-items: center; gap: 8px; margin-top: 7px; }
+    .swatch { width: 18px; height: 3px; border-radius: 2px; }
+    .swatch.x { background: var(--x); }
+    .swatch.y { background: var(--y); }
+    .dot { width: 10px; height: 10px; border-radius: 50%; }
+    .dot.pos { background: var(--positive); }
+    .dot.neg { background: var(--negative); }
+
+    .main { display: grid; gap: 16px; }
+
+    .case-header {
+      padding: 16px 18px;
+      display: block;
+    }
+
+    .case-description { color: var(--muted); margin-top: 5px; max-width: 900px; }
+
+    .metrics {
+      display: grid;
+      grid-template-columns: repeat(4, minmax(0, 1fr));
+      gap: 10px;
+    }
+
+    .metric {
+      padding: 13px 15px;
+      background: var(--panel);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      min-width: 0;
+    }
+
+    .metric-label { color: var(--muted); font-size: 12px; }
+    .metric-value { margin-top: 3px; font-size: 24px; font-weight: 600; font-variant-numeric: tabular-nums; }
+    .metric-detail { color: var(--muted); font-size: 12px; margin-top: 1px; }
+
+    .chart-grid {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 14px;
+    }
+
+    .chart-panel { padding: 14px; min-width: 0; }
+    .chart-panel.full-width { grid-column: 1 / -1; }
+    .chart-title-row { display: flex; justify-content: space-between; gap: 10px; align-items: baseline; margin-bottom: 6px; }
+    .chart-caption { color: var(--muted); font-size: 12px; text-align: right; }
+    .chart-host { min-height: 300px; position: relative; }
+
+    svg { width: 100%; height: auto; display: block; overflow: visible; }
+    .axis { stroke: var(--border); stroke-width: 1; }
+    .grid-line { stroke: var(--grid); stroke-width: 1; }
+    .mean-line { stroke: var(--warning); stroke-width: 1.5; stroke-dasharray: 5 4; }
+    .regression-line { stroke: var(--accent); stroke-width: 2; }
+    .series-x { stroke: var(--x); fill: none; stroke-width: 2.5; }
+    .series-y { stroke: var(--y); fill: none; stroke-width: 2.5; }
+    .point-x { fill: var(--x); }
+    .point-y { fill: var(--y); }
+    .scatter-positive { fill: var(--positive); }
+    .scatter-negative { fill: var(--negative); }
+    .axis-label, .tick-label, .annotation { fill: var(--muted); font-family: inherit; font-size: 11px; }
+    .annotation-strong { fill: var(--text); font-family: inherit; font-size: 12px; font-weight: 600; }
+
+    .explanation {
+      display: grid;
+      grid-template-columns: 1.2fr 0.8fr;
+      gap: 14px;
+    }
+
+    .takeaway { padding: 16px 18px; }
+    .takeaway-main { font-size: 17px; font-weight: 600; }
+    .takeaway-detail { margin-top: 6px; color: var(--muted); }
+
+    .mini-table-wrap { padding: 14px; overflow-x: auto; }
+    table { width: 100%; border-collapse: collapse; font-size: 13px; font-variant-numeric: tabular-nums; }
+    th, td { padding: 7px 8px; border-bottom: 1px solid var(--border); text-align: right; white-space: nowrap; }
+    th:first-child, td:first-child { text-align: left; }
+    th { color: var(--muted); font-weight: 500; }
+    .pos-text { color: var(--positive); }
+    .neg-text { color: var(--negative); }
+
+    footer { color: var(--muted); font-size: 12px; margin-top: 18px; text-align: center; }
+
+    @media (max-width: 1050px) {
+      .layout { grid-template-columns: 1fr; }
+      .sidebar { position: static; }
+      .scenario-list { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+      .metrics { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    }
+
+    @media (max-width: 760px) {
+      .page { padding: 16px; }
+      header, .case-header { grid-template-columns: 1fr; }
+      .formula-strip, .chart-grid, .explanation { grid-template-columns: 1fr; }
+      .scenario-list { grid-template-columns: 1fr; }
+      .metrics { grid-template-columns: 1fr 1fr; }
+      .chart-host { min-height: 250px; }
+    }
+  </style>
+</head>
+<body>
+  <div class="page">
+    <header>
+      <div>
+        <h1>Pearson Correlation：曲线、收益率与中心化</h1>
+        <p class="subtitle">同一对 symbol 可以同时出现“每日方向相反”和“收益率 correlation 为正”。关键不在绝对正负，而在每个观测相对各自均值的偏离是否同向。</p>
+      </div>
+      <a class="doc-link" href="correlation_price_vs_return_research.md">打开研究文档</a>
+    </header>
+
+    <section class="formula-strip" aria-label="Pearson correlation 三步解释">
+      <div class="formula-step"><span class="number">1</span>选择输入变量<code>价格 P，或 log return g = ln(Pt / Pt-1)</code></div>
+      <div class="formula-step"><span class="number">2</span>分别减去均值<code>dx = x - mean(x)，dy = y - mean(y)</code></div>
+      <div class="formula-step"><span class="number">3</span>比较中心化偏离<code>corr = Σ(dx·dy) / √[Σdx²·Σdy²]</code></div>
+    </section>
+
+    <div class="layout">
+      <aside class="sidebar">
+        <section class="panel panel-body">
+          <div class="panel-heading">
+            <h2>选择案例</h2>
+            <p class="legend-note">每个案例同时重算价格与 log return correlation。</p>
+          </div>
+          <div class="scenario-list" id="scenarioList"></div>
+        </section>
+
+        <section class="panel panel-body">
+          <h3>图例</h3>
+          <div class="legend-row"><span class="swatch x"></span><span id="legendX">Symbol X</span></div>
+          <div class="legend-row"><span class="swatch y"></span><span id="legendY">Symbol Y</span></div>
+          <div class="legend-row"><span class="dot pos"></span><span>中心化乘积为正：支持正 covariance</span></div>
+          <div class="legend-row"><span class="dot neg"></span><span>中心化乘积为负：支持负 covariance</span></div>
+        </section>
+      </aside>
+
+      <main class="main">
+        <section class="panel case-header">
+          <div>
+            <h2 id="caseTitle"></h2>
+            <p class="case-description" id="caseDescription"></p>
+          </div>
+        </section>
+
+        <section class="metrics" aria-label="案例指标">
+          <div class="metric"><div class="metric-label">价格 correlation</div><div class="metric-value" id="metricPrice"></div><div class="metric-detail">价格水平相对均值偏离的线性关系</div></div>
+          <div class="metric"><div class="metric-label">Log return correlation</div><div class="metric-value" id="metricReturn"></div><div class="metric-detail">收益率相对均值偏离的线性关系</div></div>
+          <div class="metric"><div class="metric-label">反向 bar 比例</div><div class="metric-value" id="metricOpposite"></div><div class="metric-detail">收益率符号相反的占比</div></div>
+          <div class="metric"><div class="metric-label">平均相对 log return</div><div class="metric-value" id="metricSpread"></div><div class="metric-detail" id="metricSpreadDetail"></div></div>
+        </section>
+
+        <section class="chart-grid">
+          <article class="panel chart-panel">
+            <div class="chart-title-row"><h3>归一化价格曲线</h3><span class="chart-caption">首个观测 = 100</span></div>
+            <div class="chart-host" id="priceChart"></div>
+          </article>
+          <article class="panel chart-panel">
+            <div class="chart-title-row"><h3>Log return 曲线</h3><span class="chart-caption">虚线为各自均值</span></div>
+            <div class="chart-host" id="returnChart"></div>
+          </article>
+          <article class="panel chart-panel">
+            <div class="chart-title-row"><h3>价格中心化散点</h3><span class="chart-caption">橙色虚线为均值，紫线为线性拟合</span></div>
+            <div class="chart-host" id="priceScatterChart"></div>
+          </article>
+          <article class="panel chart-panel">
+            <div class="chart-title-row"><h3>收益率中心化散点</h3><span class="chart-caption">橙色虚线为均值，紫线为线性拟合</span></div>
+            <div class="chart-host" id="returnScatterChart"></div>
+          </article>
+          <article class="panel chart-panel full-width">
+            <div class="chart-title-row"><h3>每个收益率观测对 covariance 的贡献</h3><span class="chart-caption">(return x − mean x) × (return y − mean y)</span></div>
+            <div class="chart-host" id="contributionChart"></div>
+          </article>
+        </section>
+
+        <section class="explanation">
+          <article class="panel takeaway">
+            <div class="takeaway-main" id="takeawayMain"></div>
+            <div class="takeaway-detail" id="takeawayDetail"></div>
+          </article>
+          <article class="panel mini-table-wrap">
+            <h3 style="margin-bottom: 8px">收益率中心化观测明细</h3>
+            <table>
+              <thead><tr><th>观测</th><th id="tableX">X</th><th id="tableY">Y</th><th>dx</th><th>dy</th><th>dx·dy</th></tr></thead>
+              <tbody id="detailRows"></tbody>
+            </table>
+          </article>
+        </section>
+      </main>
+    </div>
+
+    <footer>所有 correlation 均为 Pearson correlation。示例用于解释统计口径，不构成交易策略或投资建议。</footer>
+  </div>
+
+  <script>
+    (function () {
+      "use strict";
+
+      var realDates = ["07-24", "07-27", "07-28", "07-29"];
+
+      function pricesFromReturns(initial, returns) {
+        var values = [];
+        var price = initial;
+        returns.forEach(function (r) {
+          price *= 1 + r;
+          values.push(price);
+        });
+        return values;
+      }
+
+      function repeatPattern(pattern, count) {
+        var out = [];
+        for (var i = 0; i < count; i += 1) out.push(pattern[i % pattern.length]);
+        return out;
+      }
+
+      function logReturns(prices) {
+        var out = [];
+        for (var i = 1; i < prices.length; i += 1) out.push(Math.log(prices[i] / prices[i - 1]));
+        return out;
+      }
+
+      function mean(values) {
+        return values.reduce(function (sum, v) { return sum + v; }, 0) / values.length;
+      }
+
+      function correlation(x, y) {
+        if (!x.length || x.length !== y.length) return NaN;
+        var mx = mean(x);
+        var my = mean(y);
+        var numerator = 0;
+        var sx = 0;
+        var sy = 0;
+        for (var i = 0; i < x.length; i += 1) {
+          var dx = x[i] - mx;
+          var dy = y[i] - my;
+          numerator += dx * dy;
+          sx += dx * dx;
+          sy += dy * dy;
+        }
+        if (sx < 1e-24 || sy < 1e-24) return NaN;
+        return numerator / Math.sqrt(sx * sy);
+      }
+
+      function normalize(values) {
+        var first = values[0];
+        return values.map(function (v) { return 100 * v / first; });
+      }
+
+      function scenarioConstant() {
+        var rx = repeatPattern([0.01], 10);
+        var ry = repeatPattern([-0.01], 10);
+        return {
+          id: "constant",
+          short: "固定正负收益",
+          title: "每日固定 +1% 与 −1%：方向相反，但收益率 correlation 未定义",
+          description: "两个收益率序列各自没有方差。价格曲线一升一降，价格 correlation 接近 −1；收益率 Pearson correlation 因分母为零而没有定义。",
+          xName: "Symbol X (+1%/日)",
+          yName: "Symbol Y (−1%/日)",
+          pricesX: pricesFromReturns(100, rx),
+          pricesY: pricesFromReturns(100, ry),
+          dates: rx.map(function (_, i) { return "D" + (i + 1); }),
+          takeaway: "绝对方向相反，不等于 Pearson correlation 为 −1。",
+          detail: "Correlation 需要围绕均值的变化。两个常数序列都没有标准差，因此无法定义 correlation；价格 correlation 只是在描述两条累积曲线。"
+        };
+      }
+
+      function scenarioAlternating() {
+        var rx = repeatPattern([0.01, -0.01], 10);
+        var ry = rx.map(function (v) { return -v; });
+        return {
+          id: "alternating",
+          short: "严格反向、无持续偏好",
+          title: "+1%/−1% 交替：收益率严格负相关，但没有持续方向偏好",
+          description: "每天一个上涨、另一个下跌，收益率 correlation 为 −1；两者平均相对收益为零，表示强烈反向联动但没有哪一方持续占优。",
+          xName: "Symbol X",
+          yName: "Symbol Y",
+          pricesX: pricesFromReturns(100, rx),
+          pricesY: pricesFromReturns(100, ry),
+          dates: rx.map(function (_, i) { return "D" + (i + 1); }),
+          takeaway: "负 correlation 描述同步跷跷板，不自动表示风险偏好持续转向。",
+          detail: "方向反向比例为 100%，但相对收益一正一负交替抵消。要判断偏向哪一方，需要同时观察 log(X/Y) 的趋势。"
+        };
+      }
+
+      function scenarioBothUp() {
+        var rx = repeatPattern([0.015, -0.005], 60);
+        var ry = repeatPattern([-0.005, 0.015], 60);
+        return {
+          id: "both-up",
+          short: "收益负相关、价格同涨",
+          title: "收益率严格负相关，两条价格曲线却长期都向上",
+          description: "每日收益率围绕 +0.5% 的均值严格反向，但共同正漂移让两条累积价格都上涨。60 日价格 correlation 接近 +1。",
+          xName: "Symbol X",
+          yName: "Symbol Y",
+          pricesX: pricesFromReturns(100, rx),
+          pricesY: pricesFromReturns(100, ry),
+          dates: rx.map(function (_, i) { return "D" + (i + 1); }),
+          takeaway: "每日变化可以严格负相关，累积价格水平却可以高度正相关。",
+          detail: "这是原始价格 correlation 最容易误导的场景：共同正漂移主导价格曲线，而收益率 correlation 仍准确识别逐日反向联动。"
+        };
+      }
+
+      function scenarioDifferentRhythms() {
+        var px = [];
+        var py = [];
+        var dates = [];
+        for (var t = 0; t < 60; t += 1) {
+          px.push(Math.exp(Math.log(100) + 0.003 * t + 0.02 * Math.sin(2 * Math.PI * t / 5)));
+          py.push(Math.exp(Math.log(100) - 0.002 * t + 0.02 * Math.sin(2 * Math.PI * t / 7 + 1.2)));
+          dates.push("D" + t);
+        }
+        return {
+          id: "different-rhythms",
+          short: "反向趋势、节奏不同",
+          title: "价格趋势明显反向，收益率 correlation 却接近零",
+          description: "一个长期上行、一个长期下行，但短期波动周期分别为 5 日和 7 日。价格 correlation 明显为负，逐日收益节奏却几乎不相关。",
+          xName: "Symbol X（上行趋势）",
+          yName: "Symbol Y（下行趋势）",
+          pricesX: px,
+          pricesY: py,
+          dates: dates,
+          takeaway: "反向趋势与同日反向联动是两个不同问题。",
+          detail: "收益率 correlation 接近零只说明短期节奏不同，不能否定中期趋势分化。趋势应由各自斜率和 log(X/Y) 斜率直接表达。"
+        };
+      }
+
+      function scenarioReal() {
+        return {
+          id: "real",
+          short: "XLP / SMH 短真实窗口",
+          title: "XLP 与 SMH：每日方向相反，但收益率 correlation 为正",
+          description: "2026-07-24 至 2026-07-29。XLP 连续上涨、SMH 连续下跌；三个收益率观测相对各自均值的偏离大体同向，因此 return correlation 为 +0.691。",
+          xName: "XLP",
+          yName: "SMH",
+          pricesX: [83.5784556503, 84.8003919448, 86.4892469858, 86.7872802284],
+          pricesY: [561.19, 548.55, 529.60, 504.22],
+          dates: realDates,
+          takeaway: "所有点都位于“XLP 正、SMH 负”的象限，并不要求 Pearson correlation 为负。",
+          detail: "减去各自均值后，三个观测的 dx·dy 全部为正：XLP 相对偏强的日子，SMH 也相对自身均值偏强（跌得较少）；XLP 偏弱时，SMH 更弱。"
+        };
+      }
+
+      function scenarioRealLong() {
+        return {
+          id: "real-long",
+          short: "XLP / SMH 长真实窗口",
+          title: "XLP 与 SMH：价格水平和收益率偏离都呈强负相关",
+          description: "2026-10-09 至 2026-10-30，共 16 个交易日、15 个 log return 观测。价格 correlation 为 −0.947，log return correlation 为 −0.824；14/15 个 bar 的收益率符号相反。",
+          xName: "XLP",
+          yName: "SMH",
+          pricesX: [83.43, 84.41, 84.19, 86.06, 86.68, 87.62, 87.21, 87.75, 87.11, 89.99, 88.26, 87.96, 87.15, 86.84, 88.18, 89.42],
+          pricesY: [603.33, 590.99, 588.12, 564.74, 558.84, 539.79, 548.46, 546.36, 556.70, 523.35, 527.20, 541.62, 557.98, 567.67, 561.67, 522.49],
+          dates: ["10-09", "10-12", "10-13", "10-14", "10-15", "10-16", "10-19", "10-20", "10-21", "10-22", "10-23", "10-26", "10-27", "10-28", "10-29", "10-30"],
+          takeaway: "这个长窗口同时出现价格水平负相关、收益率偏离负相关和极高的反向 bar 比例。",
+          detail: "这三个统计量回答不同问题：−0.947 描述窗口内价格水平的反向线性排列；−0.824 表示同日收益率相对各自均值的偏离大多反向；93.3% 则直接表示绝对涨跌符号相反。数据为 Tiingo split+dividend adjusted close。"
+        };
+      }
+
+      var scenarios = [scenarioConstant(), scenarioAlternating(), scenarioBothUp(), scenarioDifferentRhythms(), scenarioReal(), scenarioRealLong()];
+      var currentScenario = scenarios[5];
+      function css(name) {
+        return getComputedStyle(document.documentElement).getPropertyValue(name).trim();
+      }
+
+      function formatCorr(value) {
+        return Number.isFinite(value) ? (value >= 0 ? "+" : "") + value.toFixed(3) : "未定义";
+      }
+
+      function formatPercent(value, digits) {
+        return (value >= 0 ? "+" : "") + (value * 100).toFixed(digits == null ? 2 : digits) + "%";
+      }
+
+      function extent(values) {
+        var min = Math.min.apply(null, values);
+        var max = Math.max.apply(null, values);
+        if (Math.abs(max - min) < 1e-12) {
+          var pad = Math.max(Math.abs(min) * 0.08, 0.01);
+          return [min - pad, max + pad];
+        }
+        var gap = (max - min) * 0.09;
+        return [min - gap, max + gap];
+      }
+
+      function scale(domain, range) {
+        return function (value) {
+          return range[0] + (value - domain[0]) / (domain[1] - domain[0]) * (range[1] - range[0]);
+        };
+      }
+
+      function svgEl(name, attrs, text) {
+        var el = document.createElementNS("http://www.w3.org/2000/svg", name);
+        Object.keys(attrs || {}).forEach(function (key) { el.setAttribute(key, attrs[key]); });
+        if (text != null) el.textContent = text;
+        return el;
+      }
+
+      function makeSvg(host, label) {
+        host.innerHTML = "";
+        var width = Math.max(440, host.clientWidth || 560);
+        var height = 300;
+        var svg = svgEl("svg", { viewBox: "0 0 " + width + " " + height, role: "img", "aria-label": label });
+        svg.appendChild(svgEl("title", {}, label));
+        host.appendChild(svg);
+        return { svg: svg, width: width, height: height, margin: { top: 18, right: 18, bottom: 42, left: 60 } };
+      }
+
+      function drawAxes(ctx, xDomain, yDomain, xLabel, yLabel, yFormatter) {
+        var svg = ctx.svg;
+        var m = ctx.margin;
+        var w = ctx.width;
+        var h = ctx.height;
+        var xs = scale(xDomain, [m.left, w - m.right]);
+        var ys = scale(yDomain, [h - m.bottom, m.top]);
+        for (var i = 0; i <= 4; i += 1) {
+          var yv = yDomain[0] + (yDomain[1] - yDomain[0]) * i / 4;
+          var yp = ys(yv);
+          svg.appendChild(svgEl("line", { x1: m.left, x2: w - m.right, y1: yp, y2: yp, class: "grid-line" }));
+          svg.appendChild(svgEl("text", { x: m.left - 8, y: yp + 4, "text-anchor": "end", class: "tick-label" }, yFormatter(yv)));
+        }
+        svg.appendChild(svgEl("line", { x1: m.left, x2: w - m.right, y1: h - m.bottom, y2: h - m.bottom, class: "axis" }));
+        svg.appendChild(svgEl("line", { x1: m.left, x2: m.left, y1: m.top, y2: h - m.bottom, class: "axis" }));
+        svg.appendChild(svgEl("text", { x: (m.left + w - m.right) / 2, y: h - 8, "text-anchor": "middle", class: "axis-label" }, xLabel));
+        var yText = svgEl("text", { x: 14, y: (m.top + h - m.bottom) / 2, "text-anchor": "middle", class: "axis-label", transform: "rotate(-90 14 " + ((m.top + h - m.bottom) / 2) + ")" }, yLabel);
+        svg.appendChild(yText);
+        return { x: xs, y: ys };
+      }
+
+      function linePath(values, xs, ys) {
+        return values.map(function (v, i) { return (i ? "L" : "M") + xs(i) + "," + ys(v); }).join(" ");
+      }
+
+      function drawTimeSeries(hostId, seriesX, seriesY, yLabel, percentMode, means) {
+        var host = document.getElementById(hostId);
+        var ctx = makeSvg(host, yLabel + "时间序列");
+        var all = seriesX.concat(seriesY);
+        if (means) all = all.concat(means);
+        var domains = extent(all);
+        if (percentMode) domains = [Math.min(domains[0], 0), Math.max(domains[1], 0)];
+        var scales = drawAxes(ctx, [0, Math.max(seriesX.length - 1, 1)], domains, "观测序号", yLabel, function (v) { return percentMode ? (v * 100).toFixed(1) + "%" : v.toFixed(1); });
+
+        if (percentMode && domains[0] < 0 && domains[1] > 0) {
+          ctx.svg.appendChild(svgEl("line", { x1: ctx.margin.left, x2: ctx.width - ctx.margin.right, y1: scales.y(0), y2: scales.y(0), class: "axis" }));
+        }
+        if (means) {
+          means.forEach(function (v) {
+            ctx.svg.appendChild(svgEl("line", { x1: ctx.margin.left, x2: ctx.width - ctx.margin.right, y1: scales.y(v), y2: scales.y(v), class: "mean-line" }));
+          });
+        }
+
+        ctx.svg.appendChild(svgEl("path", { d: linePath(seriesX, scales.x, scales.y), class: "series-x" }));
+        ctx.svg.appendChild(svgEl("path", { d: linePath(seriesY, scales.x, scales.y), class: "series-y" }));
+        [seriesX, seriesY].forEach(function (series, s) {
+          var step = Math.max(1, Math.ceil(series.length / 25));
+          series.forEach(function (v, i) {
+            if (i % step !== 0 && i !== series.length - 1) return;
+            var circle = svgEl("circle", { cx: scales.x(i), cy: scales.y(v), r: 3, class: s === 0 ? "point-x" : "point-y" });
+            circle.appendChild(svgEl("title", {}, (s === 0 ? currentScenario.xName : currentScenario.yName) + " · " + (percentMode ? formatPercent(v, 3) : v.toFixed(3))));
+            ctx.svg.appendChild(circle);
+          });
+        });
+      }
+
+      function drawScatter(hostId, x, y, xLabel, yLabel, percentMode, dateOffset) {
+        var host = document.getElementById(hostId);
+        var ctx = makeSvg(host, xLabel + "与" + yLabel + "散点图");
+        var xd = extent(x);
+        var yd = extent(y);
+        var scales = drawAxes(ctx, xd, yd, xLabel, yLabel, function (v) { return percentMode ? (v * 100).toFixed(2) + "%" : v.toFixed(2); });
+        var mx = mean(x);
+        var my = mean(y);
+        ctx.svg.appendChild(svgEl("line", { x1: scales.x(mx), x2: scales.x(mx), y1: ctx.margin.top, y2: ctx.height - ctx.margin.bottom, class: "mean-line" }));
+        ctx.svg.appendChild(svgEl("line", { x1: ctx.margin.left, x2: ctx.width - ctx.margin.right, y1: scales.y(my), y2: scales.y(my), class: "mean-line" }));
+
+        var cov = 0;
+        var varx = 0;
+        for (var i = 0; i < x.length; i += 1) {
+          cov += (x[i] - mx) * (y[i] - my);
+          varx += (x[i] - mx) * (x[i] - mx);
+        }
+        if (varx > 1e-24) {
+          var slope = cov / varx;
+          var intercept = my - slope * mx;
+          var x1 = xd[0];
+          var x2 = xd[1];
+          ctx.svg.appendChild(svgEl("line", { x1: scales.x(x1), y1: scales.y(intercept + slope * x1), x2: scales.x(x2), y2: scales.y(intercept + slope * x2), class: "regression-line" }));
+        }
+
+        x.forEach(function (v, i) {
+          var product = (v - mx) * (y[i] - my);
+          var point = svgEl("circle", { cx: scales.x(v), cy: scales.y(y[i]), r: x.length <= 10 ? 6 : 4, class: product >= 0 ? "scatter-positive" : "scatter-negative", tabindex: "0" });
+          var label = (currentScenario.dates[i + dateOffset] || ("#" + (i + 1))) + ": " + xLabel + " " + (percentMode ? formatPercent(v, 3) : v.toFixed(3)) + ", " + yLabel + " " + (percentMode ? formatPercent(y[i], 3) : y[i].toFixed(3)) + ", dx·dy " + product.toExponential(2);
+          point.appendChild(svgEl("title", {}, label));
+          ctx.svg.appendChild(point);
+        });
+      }
+
+      function drawContributions(x, y) {
+        var host = document.getElementById("contributionChart");
+        var ctx = makeSvg(host, "中心化乘积贡献");
+        var mx = mean(x);
+        var my = mean(y);
+        var values = x.map(function (v, i) { return (v - mx) * (y[i] - my); });
+        var maxAbs = Math.max.apply(null, values.map(Math.abs).concat([1e-9]));
+        var scales = drawAxes(ctx, [0, Math.max(values.length - 1, 1)], [-maxAbs * 1.12, maxAbs * 1.12], "观测序号", "中心化乘积", function (v) { return v.toExponential(1); });
+        var zeroY = scales.y(0);
+        ctx.svg.appendChild(svgEl("line", { x1: ctx.margin.left, x2: ctx.width - ctx.margin.right, y1: zeroY, y2: zeroY, class: "axis" }));
+        var barWidth = Math.max(3, (ctx.width - ctx.margin.left - ctx.margin.right) / values.length * 0.62);
+        values.forEach(function (v, i) {
+          var top = Math.min(scales.y(v), zeroY);
+          var height = Math.max(1, Math.abs(scales.y(v) - zeroY));
+          var rect = svgEl("rect", { x: scales.x(i) - barWidth / 2, y: top, width: barWidth, height: height, rx: 2, class: v >= 0 ? "scatter-positive" : "scatter-negative" });
+          rect.appendChild(svgEl("title", {}, "观测 " + (i + 1) + " · dx·dy = " + v.toExponential(4)));
+          ctx.svg.appendChild(rect);
+        });
+        ctx.svg.appendChild(svgEl("text", { x: ctx.width - ctx.margin.right, y: ctx.margin.top + 4, "text-anchor": "end", class: "annotation-strong" }, values.every(function (v) { return v >= 0; }) ? "全部为正 → covariance 为正" : "正负贡献共同决定 covariance"));
+      }
+
+      function updateTable(x, y, percentMode, dateOffset) {
+        var tbody = document.getElementById("detailRows");
+        tbody.innerHTML = "";
+        var mx = mean(x);
+        var my = mean(y);
+        var indices = [];
+        if (x.length <= 8) {
+          for (var i = 0; i < x.length; i += 1) indices.push(i);
+        } else {
+          indices = [0, 1, 2, x.length - 3, x.length - 2, x.length - 1];
+        }
+        indices.forEach(function (i) {
+          var dx = x[i] - mx;
+          var dy = y[i] - my;
+          var product = dx * dy;
+          var tr = document.createElement("tr");
+          var dateIndex = i + dateOffset;
+          var cells = [currentScenario.dates[dateIndex] || ("#" + (i + 1)), percentMode ? formatPercent(x[i], 3) : x[i].toFixed(3), percentMode ? formatPercent(y[i], 3) : y[i].toFixed(3), percentMode ? formatPercent(dx, 3) : dx.toFixed(3), percentMode ? formatPercent(dy, 3) : dy.toFixed(3), product.toExponential(2)];
+          cells.forEach(function (value, c) {
+            var td = document.createElement("td");
+            td.textContent = value;
+            if (c === 5) td.className = product >= 0 ? "pos-text" : "neg-text";
+            tr.appendChild(td);
+          });
+          tbody.appendChild(tr);
+        });
+      }
+
+      function renderScenarioButtons() {
+        var list = document.getElementById("scenarioList");
+        scenarios.forEach(function (scenario) {
+          var button = document.createElement("button");
+          button.type = "button";
+          button.className = "scenario-button";
+          button.setAttribute("aria-pressed", scenario.id === currentScenario.id ? "true" : "false");
+          button.innerHTML = "<strong>" + scenario.short + "</strong><span>" + scenario.title + "</span>";
+          button.addEventListener("click", function () {
+            currentScenario = scenario;
+            Array.prototype.forEach.call(list.querySelectorAll("button"), function (b) { b.setAttribute("aria-pressed", "false"); });
+            button.setAttribute("aria-pressed", "true");
+            render();
+          });
+          list.appendChild(button);
+        });
+      }
+
+      function render() {
+        var s = currentScenario;
+        var normX = normalize(s.pricesX);
+        var normY = normalize(s.pricesY);
+        var retX = logReturns(s.pricesX);
+        var retY = logReturns(s.pricesY);
+        var priceCorr = correlation(normX, normY);
+        var returnCorr = correlation(retX, retY);
+        var opposite = retX.filter(function (v, i) { return Math.sign(v) !== Math.sign(retY[i]) && Math.sign(v) !== 0 && Math.sign(retY[i]) !== 0; }).length / retX.length;
+        var spread = mean(retX.map(function (v, i) { return v - retY[i]; }));
+
+        document.getElementById("caseTitle").textContent = s.title;
+        document.getElementById("caseDescription").textContent = s.description;
+        document.getElementById("legendX").textContent = s.xName;
+        document.getElementById("legendY").textContent = s.yName;
+        document.getElementById("metricPrice").textContent = formatCorr(priceCorr);
+        document.getElementById("metricReturn").textContent = formatCorr(returnCorr);
+        document.getElementById("metricOpposite").textContent = (opposite * 100).toFixed(0) + "%";
+        document.getElementById("metricSpread").textContent = formatPercent(spread, 3);
+        document.getElementById("metricSpreadDetail").textContent = s.xName + " − " + s.yName + "，每 bar 平均";
+        document.getElementById("takeawayMain").textContent = s.takeaway;
+        document.getElementById("takeawayDetail").textContent = s.detail;
+
+        drawTimeSeries("priceChart", normX, normY, "归一化价格", false, null);
+        drawTimeSeries("returnChart", retX, retY, "Log return", true, [mean(retX), mean(retY)]);
+
+        document.getElementById("tableX").textContent = s.xName + " return";
+        document.getElementById("tableY").textContent = s.yName + " return";
+        drawScatter("priceScatterChart", normX, normY, s.xName + " 归一化价格", s.yName + " 归一化价格", false, 0);
+        drawScatter("returnScatterChart", retX, retY, s.xName + " log return", s.yName + " log return", true, 1);
+        drawContributions(retX, retY);
+        updateTable(retX, retY, true, 1);
+      }
+
+      renderScenarioButtons();
+      render();
+      window.addEventListener("resize", function () { window.clearTimeout(window.__corrResize); window.__corrResize = window.setTimeout(render, 120); });
+    }());
+  </script>
+</body>
+</html>
